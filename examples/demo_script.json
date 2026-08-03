@@ -1,0 +1,27 @@
+{
+  "title": "Demo pulpos",
+  "caption": "Rick le explica a Morty por qué los pulpos son alienígenas 🐙",
+  "hashtags": ["pulpos", "ciencia", "datoscuriosos", "octopus", "sciencefacts", "aprendeentiktok"],
+  "turns": [
+    {
+      "speaker": "morty",
+      "emotion": "anticipacion_ansiedad",
+      "line": "¿Qué? ¿Los pulpos tienen tres corazones? ¡Eso no puede ser verdad!"
+    },
+    {
+      "speaker": "rick",
+      "emotion": "asco_desprecio",
+      "line": "Por supuesto que es verdad. Dos corazones bombean sangre a las branquias y uno al resto del cuerpo. Su sangre es azul porque usa hemocianina con cobre en vez de hemoglobina con hierro, y cuando nadan el corazón principal se detiene, por eso prefieren arrastrarse por el fondo del mar."
+    },
+    {
+      "speaker": "morty",
+      "emotion": "miedo_panico",
+      "line": "Espera, espera... ¿su corazón se para cuando nadan? ¿Y no se mueren?"
+    },
+    {
+      "speaker": "rick",
+      "emotion": "confianza_orgullo",
+      "line": "Obviamente no."
+    }
+  ]
+}

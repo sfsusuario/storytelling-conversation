@@ -1,0 +1,12 @@
+output/
+voices_preview/
+.rvc-venv/
+.xtts-venv/
+.chatterbox-venv/
+models/
+.env
+__pycache__/
+*.egg-info/
+build/
+charla_code.zip
+*.mp4

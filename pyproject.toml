@@ -1,0 +1,27 @@
+[project]
+name = "charla"
+version = "0.1.0"
+description = "Conversación en video vertical: texto o URL de noticia -> diálogo Rick/Morty con TTS, chromakey y subtítulos"
+requires-python = ">=3.11"
+dependencies = [
+    "anthropic>=0.100",
+    "google-genai>=1.20",
+    "edge-tts>=7.0",
+    "pydantic>=2.7",
+    "requests>=2.31",
+    "trafilatura>=1.8",
+]
+
+[project.optional-dependencies]
+ui = ["gradio>=5.0"]
+
+[project.scripts]
+charla = "charla.cli:main"
+charla-ui = "charla.ui:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
