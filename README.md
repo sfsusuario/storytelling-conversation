@@ -158,14 +158,20 @@ si borras el ttf se vuelve a Arial Bold con el texto íntegro.
 ## Modo Colab (GPU gratis para todo el pipeline)
 
 [colab/charla_colab.ipynb](colab/charla_colab.ipynb) corre el generador
-completo en Google Colab con GPU: sube el proyecto a tu Drive como
-`MyDrive/charla/` (sin `output/`, `models/` ni venvs), abre el cuaderno con
-runtime T4 y ejecuta la celda 1 (instala todo, ~3-5 min; el modelo Chatterbox
-se cachea en tu Drive) y la celda 2 (interfaz Gradio con enlace público). La
-voz clonada pasa de ~1-2 min/línea en CPU a segundos, y la celda 4 guarda los
-videos en tu Drive. El modo local sigue funcionando igual — son
-intercambiables. Cuando cambie el código, regenera el paquete con
-`.\gen-code-zip.ps1` y reemplaza `charla_code.zip` en la carpeta de Drive.
+completo en Google Colab con GPU. El código se **clona de este repo** en cada
+sesión; tu Drive (`MyDrive/charla/`) solo aporta lo que no viaja por git:
+`characters/`, `background.mp4`, `voices_preview/reales/` y tu `.env`.
+
+Abrir el cuaderno (siempre la última versión del repo):
+`https://colab.research.google.com/github/sfsusuario/storytelling-conversation/blob/main/colab/charla_colab.ipynb`
+
+Con runtime T4: celda 1 (clona + instala, ~3-5 min; el modelo Chatterbox se
+cachea en tu Drive) y celda 2 (interfaz Gradio con enlace público). La voz
+clonada pasa de ~1-2 min/línea en CPU a segundos, y la celda 4 guarda los
+videos en tu Drive. Para actualizar Colab tras cambiar código: commit + push
+y re-ejecutar la celda 1. El modo local sigue funcionando igual.
+(`gen-code-zip.ps1` queda como alternativa offline si algún día no quieres
+pasar por GitHub: genera `charla_code.zip` para subirlo a Drive a mano.)
 
 ## Salida
 
