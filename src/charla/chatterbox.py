@@ -90,18 +90,37 @@ def synthesize_turns(turns: list[Turn], language: str, audio_dir: Path,
                              encoding="utf-8")
         log(f"  chatterbox: sintetizando {len(pending)} líneas (GPU si hay; "
             "la 1.ª vez descarga el modelo ~3 GB)...")
-        proc = subprocess.run(
+        # Streamed (not subprocess.run(capture_output=True)): a single big
+        # batch can take minutes on GPU, and a fully silent generator that
+        # long makes Gradio's UI (especially through the Colab share tunnel)
+        # drop the connection ("Connection to the server was lost..."). The
+        # worker prints "synthesized: <path>" per line (flush=True); relay
+        # each one so progress keeps flowing.
+        by_path = {str(out): (turn, out, meta, stamp)
+                  for turn, out, meta, stamp in pending}
+        tail: list[str] = []
+        proc = subprocess.Popen(
             [str(CHATTERBOX_PYTHON), str(_WORKER), str(jobs_file)],
-            capture_output=True, text=True)
+            stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            text=True, bufsize=1)
+        assert proc.stdout is not None
+        for line in proc.stdout:
+            line = line.rstrip("\n")
+            tail.append(line)
+            del tail[:-15]
+            if line.startswith("synthesized: "):
+                found = by_path.get(line[len("synthesized: "):])
+                if found:
+                    turn, out, meta, stamp = found
+                    meta.write_text(stamp, encoding="utf-8")
+                    log(f"  chatterbox: {out.name} ({turn.speaker})")
+        proc.wait()
         if proc.returncode != 0:
-            tail = "\n".join((proc.stderr or proc.stdout or "")
-                             .strip().splitlines()[-15:])
-            raise ChatterboxError(f"Chatterbox synthesis failed:\n{tail}")
+            raise ChatterboxError(
+                "Chatterbox synthesis failed:\n" + "\n".join(tail))
         for turn, out, meta, stamp in pending:
             if not out.exists() or out.stat().st_size == 0:
                 raise ChatterboxError(f"No audio produced for {out.name}")
-            meta.write_text(stamp, encoding="utf-8")
-            log(f"  chatterbox: {out.name} ({turn.speaker})")
 
     for turn in turns:
         turn.audio_duration = probe_duration(ffprobe, turn.audio_path)
