@@ -46,9 +46,9 @@ DEFAULT_HEIGHT = 1280
 # character loops are retimed with the fps filter.
 DEFAULT_FPS = 30
 
-# 6-9 turnos con líneas cortas ≈ 45-60 s de video (tope: 1 minuto)
-DEFAULT_MIN_TURNS = 6
-DEFAULT_MAX_TURNS = 9
+# 7-10 turnos con líneas cortas ≈ 50-60 s de video (tope: 1 minuto)
+DEFAULT_MIN_TURNS = 7
+DEFAULT_MAX_TURNS = 10
 
 # colorkey (RGB distance) — NOT chromakey: the Veo green is desaturated, so
 # in UV space it sits too close to whites/skin and chromakey eats the
@@ -247,28 +247,41 @@ PERSONAJES:
 - rick: {rick_persona}
 - morty: {morty_persona}
 
-ESTILO — lo más importante; si dudas, elige la opción menos tierna:
-- Sarcasmo seco, cinismo y humor ácido. CERO cursilería, CERO tono
-  inspirador, CERO entusiasmo artificial.
-- rick explica el dato real con desgano y superioridad, como si le doliera
-  tener que explicarlo a alguien tan lento. Remata con comparaciones
-  absurdas o púas a morty. Usa sus muletillas: "Morty" al final de frases,
-  "escucha", "por el amor de la ciencia". Puede llamarlo idiota, tonto o
-  cerebro de maní (sin groserías fuertes).
-- morty tartamudea nervioso ("a-ay", "e-eso", "o-o sea"), hace las preguntas
-  que haría el espectador, se espanta por el detalle equivocado, y a veces
-  suelta una verdad incómoda sin querer.
-- PROHIBIDO: moralejas, cierres tipo "y por eso amigos" o "increíble,
-  ¿verdad?", lenguaje de documental o de profesor, celebrar lo aprendido,
-  emojis, exclamaciones encadenadas.
+ESTILO — lo más importante; si dudas, elige SIEMPRE la opción más cruel:
+- Sarcasmo seco, cinismo, nihilismo y humor negro ligero (muerte,
+  insignificancia cósmica, lo absurdo de la existencia — apto para redes,
+  sin gore ni groserías fuertes). CERO cursilería, CERO ternura, CERO
+  entusiasmo. Este guion NO es tierno; es una caricatura adulta.
+- REGLA DURA: cada línea de rick debe contener al menos UNA púa, burla,
+  comparación cruel o comentario nihilista. Rick NUNCA valida a morty,
+  nunca lo anima, nunca dice nada amable. Sus insultos son creativos y
+  específicos del tema ("tu memoria de molusco", "tu única neurona de
+  guardia"), no genéricos. Muletillas: "Morty" al final de frases,
+  "escucha", "por el amor de la ciencia".
+- rick explica el dato real con desgano, como si le doliera compartir
+  oxígeno con alguien tan lento; el universo le parece un chiste malo y lo
+  dice.
+- morty tartamudea nervioso ("a-ay", "e-eso", "o-o sea"), pregunta lo que
+  preguntaría el espectador, se espanta por el detalle equivocado y a veces
+  suelta una verdad incómoda que a rick le arruina el argumento.
+- LISTA NEGRA (si aparece algo de esto, el guion está mal): "increíble",
+  "fascinante", "qué curioso", "¿sabías que?", "amiguitos", "la naturaleza
+  es sabia", diminutivos cariñosos, moralejas, cierres tipo "y por eso...",
+  celebrar lo aprendido, tono de profesor o documental, emojis,
+  exclamaciones encadenadas.
 - El dato real del tema debe quedar claro igual: la comedia lo envuelve, no
   lo tapa.
+- Nombres: solo rick dice "Morty"; morty se dirige a él como "Rick". Ninguno
+  dice su propio nombre.
+- Varía las emociones: un mismo personaje no repite la misma emotion en
+  turnos consecutivos, y ninguna emotion aparece más de 3 veces en total.
 
 FORMATO Y DURACIÓN (estricto — el video final debe durar MENOS DE 1 MINUTO):
 - Entre {min_turns} y {max_turns} turnos, alternando speakers (nunca dos
   seguidos del mismo, salvo el remate final).
-- Líneas de 4 a 18 palabras (ideal 8-12). PRESUPUESTO TOTAL: máximo ~120
-  palabras habladas sumando todos los turnos. Menos es más.
+- Líneas de 5 a 20 palabras (ideal 10-14). PRESUPUESTO TOTAL: entre 110 y
+  140 palabras habladas sumando todos los turnos — ni un guion raquítico ni
+  uno que pase del minuto.
 - Cada línea es TEXTO HABLADO puro para TTS: sin acotaciones, sin comillas,
   sin markdown.
 - Estructura: turno 1 arranca en mitad de la conversación con una reacción
