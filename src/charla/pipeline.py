@@ -37,6 +37,25 @@ class PipelineResult:
         self.social = social
 
 
+class ScriptDraft:
+    """Stage 1 output: script + everything stages 2-4 need, so a UI can show
+    the dialogue for approval (or regeneration) before paying for audio/render."""
+
+    def __init__(self, options: PipelineOptions, output_dir: Path,
+                 ffmpeg: str | None, ffprobe: str | None,
+                 voices: dict[str, VoiceSpec], use_rvc: bool,
+                 turns: list[Turn], script: dict, social: str):
+        self.options = options
+        self.output_dir = output_dir
+        self.ffmpeg = ffmpeg
+        self.ffprobe = ffprobe
+        self.voices = voices
+        self.use_rvc = use_rvc
+        self.turns = turns
+        self.script = script
+        self.social = social
+
+
 def _slugify(text: str) -> str:
     slug = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return slug[:32] or "run"
@@ -115,8 +134,11 @@ def _apply_force(output_dir: Path, options: PipelineOptions,
             log(f"  force: cleared {name}")
 
 
-def run_pipeline(options: PipelineOptions,
-                 on_progress: Progress = print) -> PipelineResult:
+def generate_script_stage(options: PipelineOptions,
+                          on_progress: Progress = print) -> ScriptDraft:
+    """Stage 1 only: dialogue script. Lets a UI show the turns for approval
+    (or regeneration, via options.script_feedback) before spending time/money
+    on voice synthesis and rendering."""
     log = on_progress
 
     if not options.script_file and not options.input_text.strip():
@@ -175,6 +197,9 @@ def run_pipeline(options: PipelineOptions,
             log(f"[1/4] script (scraping {options.input_text})")
             source_text = fetch_article(options.input_text,
                                         output_dir / "01_script", log=log)
+        if options.script_feedback.strip():
+            source_text = (f"{source_text}\n\n[Instrucciones adicionales del "
+                           f"usuario para este guion]: {options.script_feedback.strip()}")
         provider, text_model = resolve_text_backend(options.text_provider,
                                                     options.text_model)
         options.text_provider, options.text_model = provider, text_model
@@ -198,6 +223,21 @@ def run_pipeline(options: PipelineOptions,
     if social:
         (output_dir / "social.txt").write_text(social, encoding="utf-8")
 
+    return ScriptDraft(options, output_dir, ffmpeg, ffprobe, voices, use_rvc,
+                       turns, script, social)
+
+
+def continue_pipeline(draft: ScriptDraft,
+                      on_progress: Progress = print) -> PipelineResult:
+    """Stages 2-4 (voice, timeline, render) for an already-approved script."""
+    log = on_progress
+    options = draft.options
+    turns = draft.turns
+    ffmpeg, ffprobe = draft.ffmpeg, draft.ffprobe
+    voices, use_rvc = draft.voices, draft.use_rvc
+    output_dir = draft.output_dir
+    background = Path(options.background)
+
     if options.dry_run:
         for turn in turns:
             turn.audio_duration = _estimate_duration(turn.line)
@@ -205,12 +245,12 @@ def run_pipeline(options: PipelineOptions,
                                   options.fps, bg_duration=0.0,
                                   watermark=options.watermark,
                                   subtitles=options.subtitles)
-        manifest_path = write_manifest(options, timeline, script["title"],
+        manifest_path = write_manifest(options, timeline, draft.script["title"],
                                        output_dir, dry_run=True,
                                        voices=voices)
         log(f"[dry-run] manifest: {manifest_path}")
         return PipelineResult(output_dir, manifest_path, None,
-                              script["title"], turns, social)
+                              draft.script["title"], turns, draft.social)
 
     # Stage 2: voice. Cloned-voice synthesis (xtts / chatterbox) or
     # edge-tts, optionally re-timbred with the Latin dub RVC models.
@@ -255,8 +295,16 @@ def run_pipeline(options: PipelineOptions,
                             bg_volume=options.bg_volume,
                             char_scale=options.char_scale, log=log)
 
-    manifest_path = write_manifest(options, timeline, script["title"],
+    manifest_path = write_manifest(options, timeline, draft.script["title"],
                                    output_dir, dry_run=False, voices=voices)
     log(f"done: {final_path}")
     return PipelineResult(output_dir, manifest_path, final_path,
-                          script["title"], turns, social)
+                          draft.script["title"], turns, draft.social)
+
+
+def run_pipeline(options: PipelineOptions,
+                 on_progress: Progress = print) -> PipelineResult:
+    """Full pipeline (script + voice + render) in one call: used by the CLI
+    and by callers that don't need to review the script before rendering."""
+    draft = generate_script_stage(options, on_progress)
+    return continue_pipeline(draft, on_progress)

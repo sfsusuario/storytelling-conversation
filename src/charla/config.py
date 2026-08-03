@@ -331,6 +331,7 @@ def build_script_system_prompt(language: str, emotions: list[str],
 class PipelineOptions:
     input_text: str = ""                 # free text, or URL when is_url
     script_file: Path | None = None      # manual DialogueScript JSON (no LLM)
+    script_feedback: str = ""            # extra instructions when regenerating
     language: str = DEFAULT_LANGUAGE
     min_turns: int = DEFAULT_MIN_TURNS
     max_turns: int = DEFAULT_MAX_TURNS

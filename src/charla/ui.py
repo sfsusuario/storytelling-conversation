@@ -82,13 +82,13 @@ def _load_history_run(video_path: str | None):
 def build_app():
     import gradio as gr
 
-    def generate(topic, use_demo, language, max_turns, subtitles, watermark,
-                 bg_enabled, bg_volume, use_rvc, tts_engine, text_provider,
-                 rick_voice, rick_rate, rick_pitch,
-                 morty_voice, morty_rate, morty_pitch,
-                 resolution, fps, chroma_similarity, chroma_blend,
-                 char_scale, text_model, force, output_dir,
-                 progress=gr.Progress()):
+    def _build_options(topic, use_demo, language, max_turns, subtitles,
+                       watermark, bg_enabled, bg_volume, use_rvc, tts_engine,
+                       text_provider, rick_voice, rick_rate, rick_pitch,
+                       morty_voice, morty_rate, morty_pitch,
+                       resolution, fps, chroma_similarity, chroma_blend,
+                       char_scale, text_model, force, output_dir,
+                       feedback=""):
         topic = (topic or "").strip()
         if not use_demo and not topic:
             raise gr.Error("Escribe un tema o URL de noticia (o marca "
@@ -115,9 +115,10 @@ def build_app():
         except ValueError:
             raise gr.Error(f"Resolución inválida '{resolution}', formato AnchoxAlto")
 
-        options = PipelineOptions(
+        return PipelineOptions(
             input_text="" if use_demo else topic,
             script_file=_DEMO_SCRIPT if use_demo else None,
+            script_feedback="" if use_demo else (feedback or "").strip(),
             language=str(language).split(" ")[0],
             max_turns=int(max_turns),
             min_turns=min(DEFAULT_MIN_TURNS, int(max_turns)),
@@ -142,14 +143,52 @@ def build_app():
             morty_pitch=(morty_pitch or "").strip() or None,
         )
 
-        from .pipeline import run_pipeline
+    def generate_script(topic, use_demo, language, max_turns, subtitles,
+                        watermark, bg_enabled, bg_volume, use_rvc, tts_engine,
+                        text_provider, rick_voice, rick_rate, rick_pitch,
+                        morty_voice, morty_rate, morty_pitch,
+                        resolution, fps, chroma_similarity, chroma_blend,
+                        char_scale, text_model, force, output_dir, feedback,
+                        progress=gr.Progress()):
+        """Stage 1 only: write the dialogue and stop for the user to review
+        it (approve, or ask for a different one) before any voice/render
+        work happens."""
+        options = _build_options(
+            topic, use_demo, language, max_turns, subtitles, watermark,
+            bg_enabled, bg_volume, use_rvc, tts_engine, text_provider,
+            rick_voice, rick_rate, rick_pitch, morty_voice, morty_rate,
+            morty_pitch, resolution, fps, chroma_similarity, chroma_blend,
+            char_scale, text_model, force, output_dir, feedback)
+
+        from .pipeline import generate_script_stage
+
+        lines: list[str] = []
+        progress(0.2, desc="Generando guion...")
+        try:
+            draft = generate_script_stage(options, on_progress=lines.append)
+        except Exception as e:
+            raise gr.Error(str(e))
+        progress(1.0, desc="Guion listo")
+
+        dialogue = "\n".join(
+            f'{t.speaker} [{t.emotion}]: "{t.line}"' for t in draft.turns)
+        review = f'Título: "{draft.script["title"]}"\n\n{dialogue}'
+        return draft, review, "\n".join(lines), gr.update(visible=True)
+
+    def approve_and_render(draft, progress=gr.Progress()):
+        """Stages 2-4 for the script the user already approved in the
+        review step."""
+        if draft is None:
+            raise gr.Error("Primero genera (y revisa) un guion.")
+
+        from .pipeline import continue_pipeline
 
         q: queue.Queue = queue.Queue()
         holder: dict = {}
 
         def worker():
             try:
-                holder["result"] = run_pipeline(options, on_progress=q.put)
+                holder["result"] = continue_pipeline(draft, on_progress=q.put)
             except Exception as e:  # surfaced as gr.Error below
                 holder["error"] = e
             finally:
@@ -158,10 +197,12 @@ def build_app():
         threading.Thread(target=worker, daemon=True).start()
 
         # Map pipeline log events to a progress fraction: stages give the
-        # coarse position, per-turn audio/clip lines fill the gaps.
+        # coarse position, per-turn audio/clip lines fill the gaps. Script
+        # generation (stage 1) already happened, so this only covers 2-4.
         import re
+        turn_total = len(draft.turns)
         lines: list[str] = []
-        turn_total = audio_done = clip_done = 0
+        audio_done = clip_done = 0
         frac = 0.0
         progress(0.0, desc="Iniciando...")
         while True:
@@ -170,24 +211,20 @@ def build_app():
                 break
             msg = str(item)
             lines.append(msg)
-            if re.match(r"^  turn_\d+ ", msg):
-                turn_total += 1
-            if msg.startswith("[1/4]"):
+            if msg.startswith("[2/4]"):
                 frac = max(frac, 0.05)
-            elif msg.startswith("[2/4]"):
-                frac = max(frac, 0.12)
             elif msg.startswith("[3/4]"):
-                frac = max(frac, 0.60)
+                frac = max(frac, 0.57)
             elif msg.startswith("[4/4]"):
-                frac = max(frac, 0.62)
+                frac = max(frac, 0.60)
             if turn_total:
                 if re.match(r"^  (tts|rvc|xtts|chatterbox|pingpong):", msg):
                     audio_done += 1
-                    frac = max(frac, 0.12 + 0.46
+                    frac = max(frac, 0.05 + 0.50
                                * min(1.0, audio_done / turn_total))
                 elif re.match(r"^  clip:", msg):
                     clip_done += 1
-                    frac = max(frac, 0.62 + 0.32
+                    frac = max(frac, 0.60 + 0.38
                                * min(1.0, clip_done / turn_total))
             if msg.startswith("done:"):
                 frac = 1.0
@@ -208,6 +245,7 @@ def build_app():
 
     rick, morty = CHARACTERS["rick"], CHARACTERS["morty"]
     with gr.Blocks(title="Charla — conversaciones en video") as demo:
+        draft_state = gr.State(None)
         gr.Markdown(
             "# 🎭 Charla\n"
             "Tema libre o **URL de noticia** → conversación cómica entre dos "
@@ -227,7 +265,22 @@ def build_app():
                     label="Guion de ejemplo — prueba gratis (sin LLM)",
                     info="Usa examples/demo_script.json: solo TTS gratuito y "
                          "render local, sin gastar créditos.")
-                go = gr.Button("🎬 Generar video", variant="primary", size="lg")
+                go = gr.Button("📝 Generar guion", variant="primary", size="lg")
+
+                with gr.Group(visible=False) as review_group:
+                    gr.Markdown("**Revisa el guion antes de generar el "
+                                "video** — apruébalo o pide cambios")
+                    script_review = gr.Textbox(label="Guion generado",
+                                               lines=10, interactive=False)
+                    feedback = gr.Textbox(
+                        label="Instrucciones para regenerar (opcional)",
+                        placeholder='p. ej. "hazlo más gracioso", "cambia '
+                                    'el final", "más corto"',
+                        lines=2)
+                    with gr.Row():
+                        regen = gr.Button("🔄 Regenerar guion")
+                        approve = gr.Button("✅ Aprobar y generar video",
+                                            variant="primary")
 
                 with gr.Group():
                     gr.Markdown("**Parámetros** *(todos con valores por defecto)*")
@@ -374,15 +427,19 @@ def build_app():
                          outputs=[hist_video, hist_info])
         demo.load(_refresh_history, outputs=hist_runs)
 
-        go.click(generate,
-                 inputs=[topic, use_demo, language, max_turns, subtitles,
-                         watermark, bg_enabled, bg_volume, use_rvc,
-                         tts_engine, text_provider,
-                         rick_voice, rick_rate, rick_pitch,
-                         morty_voice, morty_rate, morty_pitch,
-                         resolution, fps, chroma_similarity, chroma_blend,
-                         char_scale, text_model, force, output_dir],
-                 outputs=[log, video, summary, social]).then(
+        script_inputs = [topic, use_demo, language, max_turns, subtitles,
+                        watermark, bg_enabled, bg_volume, use_rvc,
+                        tts_engine, text_provider,
+                        rick_voice, rick_rate, rick_pitch,
+                        morty_voice, morty_rate, morty_pitch,
+                        resolution, fps, chroma_similarity, chroma_blend,
+                        char_scale, text_model, force, output_dir, feedback]
+        script_outputs = [draft_state, script_review, log, review_group]
+
+        go.click(generate_script, inputs=script_inputs, outputs=script_outputs)
+        regen.click(generate_script, inputs=script_inputs, outputs=script_outputs)
+        approve.click(approve_and_render, inputs=[draft_state],
+                      outputs=[log, video, summary, social]).then(
             _refresh_history, outputs=hist_runs)
     return demo
 
