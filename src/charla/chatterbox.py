@@ -18,6 +18,7 @@ from .config import (CHARACTERS, CHATTERBOX_PYTHON, CHATTERBOX_EXAGGERATION,
                      XTTS_REFS_DIR)
 from .ffutil import probe_duration
 from .models import Turn
+from .textnorm import expand_numbers_for_tts
 
 
 class ChatterboxError(RuntimeError):
@@ -66,9 +67,12 @@ def synthesize_turns(turns: list[Turn], language: str, audio_dir: Path,
     for turn in turns:
         ref = character_ref(turn.speaker)
         exaggeration = CHATTERBOX_EXAGGERATION[turn.speaker]
+        # The model misreads digits: speak numbers as words. Subtitles keep
+        # turn.line as written (digits included).
+        speech_line = expand_numbers_for_tts(turn.line, language)
         out = audio_dir / f"{turn.turn_id}.cbx.wav"
         meta = audio_dir / f"{turn.turn_id}.cbx.json"
-        stamp_src = (f"cbx-v1|{language}|{turn.line}|{exaggeration}"
+        stamp_src = (f"cbx-v2|{language}|{speech_line}|{exaggeration}"
                      f"|{ref}|{ref.stat().st_mtime_ns}")
         stamp = hashlib.sha256(stamp_src.encode("utf-8")).hexdigest()
         if out.exists() and out.stat().st_size > 0 and meta.exists() \
@@ -78,7 +82,7 @@ def synthesize_turns(turns: list[Turn], language: str, audio_dir: Path,
             job = jobs.setdefault(turn.speaker, {
                 "speaker": turn.speaker, "ref": str(ref),
                 "exaggeration": exaggeration, "files": []})
-            job["files"].append([turn.line, str(out)])
+            job["files"].append([speech_line, str(out)])
             pending.append((turn, out, meta, stamp))
         turn.audio_path = out
         turn.word_timings = None

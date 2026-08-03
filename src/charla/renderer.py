@@ -100,10 +100,9 @@ def _subtitle_filters(turn: Turn, clips_dir: Path, duration: float,
     display = _schwifty_text if schwifty else (lambda t: t)
     if turn.word_timings:
         filters = []
-        # Sentence case over the WHOLE line: only the very first letter of
-        # the first chunk is uppercase; every other word is lowercase.
-        lowered = [{**w, "w": w["w"].lower()} for w in turn.word_timings]
-        chunks = _chunk_words(lowered)
+        # Casing as written by the scriptwriter: the line already starts
+        # capitalized and keeps proper nouns (Rick, Morty, siglas) intact.
+        chunks = _chunk_words(turn.word_timings)
         for i, (text, start, end) in enumerate(chunks):
             if i == 0 and text:
                 text = text[0].upper() + text[1:]
@@ -123,7 +122,7 @@ def _subtitle_filters(turn: Turn, clips_dir: Path, duration: float,
         return "".join(filters)
 
     text = turn.line.strip()
-    text = text[0].upper() + text[1:].lower() if text else text
+    text = text[0].upper() + text[1:] if text else text
     text = display(text)
     wrapped = "\n".join(textwrap.wrap(text, width=28))
     path = _sub_textfile(clips_dir, f"{turn.turn_id}.sub.txt", wrapped)
