@@ -188,8 +188,14 @@ def generate_script(source_text: str, emotions: list[str], model: str,
     Cached in cache_dir/script.json; a single API call produces both.
     """
     provider, model = resolve_text_backend(provider, model)
+    # Who speaks first: derived from the source text so it varies between
+    # topics (roughly 50/50) but stays stable for the same topic — a true
+    # random pick would invalidate the script cache on every re-run.
+    starter_seed = hashlib.sha256(source_text.encode("utf-8")).digest()[0]
+    starter = "rick" if starter_seed % 2 == 0 else "morty"
     system_prompt = build_script_system_prompt(language, emotions,
-                                               min_turns, max_turns)
+                                               min_turns, max_turns,
+                                               starter=starter)
     schema = build_script_model(emotions)
 
     cache_file = cache_dir / "script.json"

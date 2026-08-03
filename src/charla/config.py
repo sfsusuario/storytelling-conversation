@@ -287,6 +287,10 @@ FORMATO Y DURACIÓN (estricto — el video final debe durar MENOS DE 1 MINUTO):
 - Estructura: turno 1 arranca en mitad de la conversación con una reacción
   (nada de presentaciones), desarrollo con 2-3 datos concretos del texto
   fuente, y remate final de rick: seco, cínico, nunca una conclusión bonita.
+- El turno 1 lo dice {starter}. Si arranca rick, es él soltando el dato con
+  desprecio o quejándose de tener que explicarlo; si arranca morty, es su
+  reacción nerviosa o una pregunta a medio susto. En ambos casos suena a
+  conversación ya empezada.
 - TODO en {language}.
 - El campo emotion de cada turno DEBE ser exactamente uno de: {emotion_list}.
   Guía de tono por emoción — aplica la guía a la escritura de esa línea:
@@ -309,7 +313,8 @@ Escribe el guion de la conversación.
 
 
 def build_script_system_prompt(language: str, emotions: list[str],
-                               min_turns: int, max_turns: int) -> str:
+                               min_turns: int, max_turns: int,
+                               starter: str = "morty") -> str:
     lang = LANGUAGE_NAMES.get(language, language)
     prompts = "\n".join(
         f"  - {slug}: {EMOTION_PROMPTS.get(slug, slug.replace('_', ' '))}"
@@ -319,7 +324,7 @@ def build_script_system_prompt(language: str, emotions: list[str],
         morty_persona=CHARACTERS["morty"].persona,
         min_turns=min_turns, max_turns=max_turns,
         language=lang, emotion_list=", ".join(emotions),
-        emotion_prompts=prompts)
+        emotion_prompts=prompts, starter=starter)
 
 
 # ---------------------------------------------------------------------------
