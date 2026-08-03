@@ -210,6 +210,10 @@ def generate_script(source_text: str, emotions: list[str], model: str,
 
     data = result.model_dump()
     _validate_script(data, emotions, min_turns)
+    total_words = sum(len(str(t["line"]).split()) for t in data["turns"])
+    if total_words > 150:
+        log(f"  aviso: guion largo ({total_words} palabras habladas, "
+            "objetivo <=120) — el video puede pasar del minuto")
     script = {"title": data["title"], "turns": data["turns"]}
     social = _format_social(data.get("caption", ""), data.get("hashtags", []))
 

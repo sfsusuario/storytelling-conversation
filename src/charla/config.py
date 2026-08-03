@@ -46,8 +46,9 @@ DEFAULT_HEIGHT = 1280
 # character loops are retimed with the fps filter.
 DEFAULT_FPS = 30
 
-DEFAULT_MIN_TURNS = 8
-DEFAULT_MAX_TURNS = 12
+# 6-9 turnos con líneas cortas ≈ 45-60 s de video (tope: 1 minuto)
+DEFAULT_MIN_TURNS = 6
+DEFAULT_MAX_TURNS = 9
 
 # colorkey (RGB distance) — NOT chromakey: the Veo green is desaturated, so
 # in UV space it sits too close to whites/skin and chromakey eats the
@@ -140,10 +141,11 @@ CHARACTERS: dict[str, CharacterSpec] = {
         rvc_pitch=int(os.environ.get("CHARLA_RICK_RVC_PITCH", "2")),
         rvc_source_voice=os.environ.get("CHARLA_RICK_RVC_SOURCE",
                                         "es-MX-DaliaNeural"),
-        persona=("científico genio, arrogante, sarcástico y condescendiente. "
-                 "Persona mayor: habla con seguridad absoluta, desprecia lo "
-                 "obvio y remata con púas. Explica el tema al otro como si "
-                 "fuera idiota, pero lo explica BIEN (el espectador aprende)."),
+        persona=("científico genio, viejo, nihilista y condescendiente; le "
+                 "aburre la estupidez ajena y lo demuestra. Habla con "
+                 "seguridad absoluta, desprecia lo obvio y remata con púas "
+                 "secas. Explica el tema como si el otro fuera idiota, pero "
+                 "lo explica BIEN (el espectador aprende sin darse cuenta)."),
     ),
     "morty": CharacterSpec(
         name="morty",
@@ -157,9 +159,10 @@ CHARACTERS: dict[str, CharacterSpec] = {
         rvc_pitch=int(os.environ.get("CHARLA_MORTY_RVC_PITCH", "10")),
         rvc_source_voice=os.environ.get("CHARLA_MORTY_RVC_SOURCE",
                                         "es-MX-DaliaNeural"),
-        persona=("su ayudante, un niño/adolescente ansioso e ingenuo. Hace "
-                 "las preguntas que haría el espectador, entra en pánico "
-                 "fácil y a veces da en el clavo sin querer."),
+        persona=("su ayudante adolescente, ansioso e ingenuo; tartamudea "
+                 "cuando se pone nervioso (casi siempre). Hace las preguntas "
+                 "que haría el espectador, se espanta por el detalle "
+                 "equivocado y a veces da en el clavo sin querer."),
     ),
 }
 
@@ -235,21 +238,42 @@ EMOTION_PROMPTS: dict[str, str] = {
 # Scriptwriter prompts
 # ---------------------------------------------------------------------------
 SCRIPT_SYSTEM_TEMPLATE = """\
-Escribes el guion de un video corto vertical (TikTok/Reels/Shorts) que es una
-CONVERSACIÓN cómica entre dos personajes sobre un tema o noticia dada.
+Escribes el guion de un video corto vertical (TikTok/Reels/Shorts): una
+CONVERSACIÓN entre dos personajes animados sobre un tema o noticia dada, con
+el humor ácido y el ritmo de una caricatura adulta de ciencia ficción
+(estilo Rick and Morty en su doblaje latino).
 
 PERSONAJES:
 - rick: {rick_persona}
 - morty: {morty_persona}
 
-REGLAS DEL GUION:
+ESTILO — lo más importante; si dudas, elige la opción menos tierna:
+- Sarcasmo seco, cinismo y humor ácido. CERO cursilería, CERO tono
+  inspirador, CERO entusiasmo artificial.
+- rick explica el dato real con desgano y superioridad, como si le doliera
+  tener que explicarlo a alguien tan lento. Remata con comparaciones
+  absurdas o púas a morty. Usa sus muletillas: "Morty" al final de frases,
+  "escucha", "por el amor de la ciencia". Puede llamarlo idiota, tonto o
+  cerebro de maní (sin groserías fuertes).
+- morty tartamudea nervioso ("a-ay", "e-eso", "o-o sea"), hace las preguntas
+  que haría el espectador, se espanta por el detalle equivocado, y a veces
+  suelta una verdad incómoda sin querer.
+- PROHIBIDO: moralejas, cierres tipo "y por eso amigos" o "increíble,
+  ¿verdad?", lenguaje de documental o de profesor, celebrar lo aprendido,
+  emojis, exclamaciones encadenadas.
+- El dato real del tema debe quedar claro igual: la comedia lo envuelve, no
+  lo tapa.
+
+FORMATO Y DURACIÓN (estricto — el video final debe durar MENOS DE 1 MINUTO):
 - Entre {min_turns} y {max_turns} turnos, alternando speakers (nunca dos
-  turnos seguidos del mismo, salvo un remate final opcional).
-- Cada línea es TEXTO HABLADO puro para un narrador TTS: sin acotaciones, sin
-  comillas, sin emojis, sin markdown. Corta y punchy: 5-25 palabras (ideal ~12).
-- Abre con un gancho en los 2 primeros turnos (la reacción a la noticia),
-  desarrolla el tema con los datos concretos del texto fuente (que el
-  espectador aprenda algo real) y cierra con un remate cómico.
+  seguidos del mismo, salvo el remate final).
+- Líneas de 4 a 18 palabras (ideal 8-12). PRESUPUESTO TOTAL: máximo ~120
+  palabras habladas sumando todos los turnos. Menos es más.
+- Cada línea es TEXTO HABLADO puro para TTS: sin acotaciones, sin comillas,
+  sin markdown.
+- Estructura: turno 1 arranca en mitad de la conversación con una reacción
+  (nada de presentaciones), desarrollo con 2-3 datos concretos del texto
+  fuente, y remate final de rick: seco, cínico, nunca una conclusión bonita.
 - TODO en {language}.
 - El campo emotion de cada turno DEBE ser exactamente uno de: {emotion_list}.
   Guía de tono por emoción — aplica la guía a la escritura de esa línea:
@@ -257,9 +281,10 @@ REGLAS DEL GUION:
 
 También produce un post social para el video terminado:
 - title: título muy corto del tema (3-6 palabras, para archivo/registro).
-- caption: UNA línea gancho en {language}, máximo un emoji.
-- hashtags: 6-8 tags, sin el símbolo #, mezclando virales amplios y de nicho,
-  en {language} e inglés.
+- caption: UNA línea gancho en {language} con el mismo humor ácido del
+  guion, máximo un emoji.
+- hashtags: 6-8 tags, sin el símbolo #, mezclando virales amplios y de
+  nicho, en {language} e inglés.
 """
 
 SCRIPT_USER_TEMPLATE = """\

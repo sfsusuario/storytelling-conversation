@@ -1,27 +1,27 @@
 {
   "title": "Demo pulpos",
-  "caption": "Rick le explica a Morty por qué los pulpos son alienígenas 🐙",
-  "hashtags": ["pulpos", "ciencia", "datoscuriosos", "octopus", "sciencefacts", "aprendeentiktok"],
+  "caption": "Rick explica por qué los pulpos están mejor diseñados que tú 🐙",
+  "hashtags": ["pulpos", "ciencia", "datoscuriosos", "humor", "octopus", "sciencefacts", "aprendeentiktok"],
   "turns": [
     {
       "speaker": "morty",
       "emotion": "anticipacion_ansiedad",
-      "line": "¿Qué? ¿Los pulpos tienen tres corazones? ¡Eso no puede ser verdad!"
+      "line": "A-ay Rick, ¿en serio los pulpos tienen tres corazones? E-eso no puede ser normal."
     },
     {
       "speaker": "rick",
       "emotion": "asco_desprecio",
-      "line": "Por supuesto que es verdad. Dos corazones bombean sangre a las branquias y uno al resto del cuerpo. Su sangre es azul porque usa hemocianina con cobre en vez de hemoglobina con hierro, y cuando nadan el corazón principal se detiene, por eso prefieren arrastrarse por el fondo del mar."
+      "line": "Claro que no es normal, Morty, son pulpos. Dos corazones bombean sangre a las branquias, uno al resto del cuerpo, y su sangre es azul porque usa cobre en vez de hierro. Biología básica, Morty, hasta un cerebro de maní la entiende."
     },
     {
       "speaker": "morty",
       "emotion": "miedo_panico",
-      "line": "Espera, espera... ¿su corazón se para cuando nadan? ¿Y no se mueren?"
+      "line": "¿S-sangre azul? ¿Y si un día se les acaba el... el cobre, Rick?"
     },
     {
       "speaker": "rick",
       "emotion": "confianza_orgullo",
-      "line": "Obviamente no."
+      "line": "No se les acaba, Morty. Lo único que se acaba aquí es mi paciencia."
     }
   ]
 }
