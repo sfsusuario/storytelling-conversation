@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import re
 import shutil
+import time
 from pathlib import Path
 from typing import Callable
 
@@ -237,6 +238,7 @@ def continue_pipeline(draft: ScriptDraft,
     voices, use_rvc = draft.voices, draft.use_rvc
     output_dir = draft.output_dir
     background = Path(options.background)
+    started = time.monotonic()
 
     if options.dry_run:
         for turn in turns:
@@ -297,6 +299,9 @@ def continue_pipeline(draft: ScriptDraft,
 
     manifest_path = write_manifest(options, timeline, draft.script["title"],
                                    output_dir, dry_run=False, voices=voices)
+    from .timings import engine_key, record_run
+    record_run(engine_key(options.tts_engine, use_rvc), len(turns),
+               time.monotonic() - started)
     log(f"done: {final_path}")
     return PipelineResult(output_dir, manifest_path, final_path,
                           draft.script["title"], turns, draft.social)

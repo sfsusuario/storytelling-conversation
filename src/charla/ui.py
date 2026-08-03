@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import queue
 import threading
+import time
 from pathlib import Path
 
 from .config import (CHARACTERS, DEFAULT_BACKGROUND, DEFAULT_BG_VOLUME,
@@ -25,6 +26,68 @@ _RICK_VOICES = ["es-MX-JorgeNeural", "es-ES-AlvaroNeural",
 _MORTY_VOICES = ["es-US-AlonsoNeural", "es-CR-JuanNeural", "es-PE-AlexNeural",
                  "es-MX-JorgeNeural", "es-SV-RodrigoNeural",
                  "en-US-GuyNeural"]
+
+
+def _fmt_mmss(seconds: float) -> str:
+    seconds = max(0, int(seconds))
+    return f"{seconds // 60:02d}:{seconds % 60:02d}"
+
+
+def _eta_html(elapsed: float, estimate: float | None,
+              done: bool = False) -> str:
+    """Global time progress: elapsed counter + remaining estimate bar."""
+    if done:
+        pct, color = 100.0, "#22c55e"
+        label = f"✅ Completado en {_fmt_mmss(elapsed)}"
+    elif estimate and estimate > 0:
+        pct = min(99.0, 100.0 * elapsed / estimate)
+        color = "#3b82f6"
+        label = (f"⏱ {_fmt_mmss(elapsed)} transcurridos — "
+                 f"~{_fmt_mmss(estimate - elapsed)} restantes "
+                 f"(estimado {_fmt_mmss(estimate)})")
+    else:
+        pct, color = 100.0, "#94a3b8"
+        label = (f"⏱ {_fmt_mmss(elapsed)} transcurridos — sin estimación "
+                 "aún (primer video con este motor de voz)")
+    return (
+        '<div style="font-family:sans-serif">'
+        f'<div style="margin-bottom:4px;font-size:0.95em">{label}</div>'
+        '<div style="background:#e5e7eb;border-radius:6px;height:14px;'
+        'overflow:hidden">'
+        f'<div style="width:{pct:.1f}%;height:100%;background:{color};'
+        'border-radius:6px;transition:width 1s linear"></div>'
+        "</div></div>")
+
+
+_DING_CACHE: dict = {}
+
+
+def _ding_html() -> str:
+    """<audio autoplay> with an embedded two-tone ding (pure stdlib wav)."""
+    if "uri" not in _DING_CACHE:
+        import base64
+        import io
+        import math
+        import struct
+        import wave
+
+        sr = 22050
+        frames = bytearray()
+        for i in range(int(sr * 0.9)):
+            t = i / sr
+            env = math.exp(-3.5 * t)
+            s = 0.45 * env * (math.sin(2 * math.pi * 880 * t)
+                              + 0.6 * math.sin(2 * math.pi * 1318.5 * t))
+            frames += struct.pack("<h", int(max(-1.0, min(1.0, s)) * 32767))
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sr)
+            w.writeframes(bytes(frames))
+        _DING_CACHE["uri"] = ("data:audio/wav;base64,"
+                              + base64.b64encode(buf.getvalue()).decode())
+    return f'<audio autoplay src="{_DING_CACHE["uri"]}"></audio>'
 
 
 def _language_choices() -> list[str]:
@@ -182,6 +245,7 @@ def build_app():
             raise gr.Error("Primero genera (y revisa) un guion.")
 
         from .pipeline import continue_pipeline
+        from .timings import engine_key, estimate_seconds
 
         q: queue.Queue = queue.Queue()
         holder: dict = {}
@@ -196,19 +260,32 @@ def build_app():
 
         threading.Thread(target=worker, daemon=True).start()
 
-        # Map pipeline log events to a progress fraction: stages give the
-        # coarse position, per-turn audio/clip lines fill the gaps. Script
-        # generation (stage 1) already happened, so this only covers 2-4.
+        # Two independent progress signals:
+        # - gr.Progress: stage/event based (coarse position + per-turn fills)
+        # - eta bar: global time counter + remaining estimate from the
+        #   recorded duration of past runs (output/_timings.json)
         import re
         turn_total = len(draft.turns)
+        estimate = estimate_seconds(
+            engine_key(draft.options.tts_engine, draft.use_rvc), turn_total)
+        started = time.monotonic()
         lines: list[str] = []
         audio_done = clip_done = 0
         frac = 0.0
         progress(0.0, desc="Iniciando...")
-        while True:
-            item = q.get()
+        finished = False
+        while not finished:
+            try:
+                item = q.get(timeout=1.0)
+            except queue.Empty:
+                # No pipeline event this second: refresh only the time bar.
+                yield (gr.skip(), gr.skip(), gr.skip(), gr.skip(),
+                       _eta_html(time.monotonic() - started, estimate),
+                       gr.skip())
+                continue
             if item is None:
-                break
+                finished = True
+                continue
             msg = str(item)
             lines.append(msg)
             if msg.startswith("[2/4]"):
@@ -229,7 +306,9 @@ def build_app():
             if msg.startswith("done:"):
                 frac = 1.0
             progress(frac, desc=msg.strip()[:70])
-            yield "\n".join(lines), None, gr.skip(), gr.skip()
+            yield ("\n".join(lines), None, gr.skip(), gr.skip(),
+                   _eta_html(time.monotonic() - started, estimate),
+                   gr.skip())
 
         if "error" in holder:
             raise gr.Error(str(holder["error"]))
@@ -241,7 +320,9 @@ def build_app():
                    f"Manifiesto: {result.manifest_path.resolve()}")
         lines.append("¡listo!")
         yield ("\n".join(lines), str(result.final_video), summary,
-               result.social or "")
+               result.social or "",
+               _eta_html(time.monotonic() - started, estimate, done=True),
+               _ding_html())
 
     rick, morty = CHARACTERS["rick"], CHARACTERS["morty"]
     with gr.Blocks(title="Charla — conversaciones en video") as demo:
@@ -394,6 +475,9 @@ def build_app():
 
             # ------------------------- salida --------------------------
             with gr.Column(scale=7):
+                eta_bar = gr.HTML(label="Progreso global")
+                ding = gr.HTML(visible=True, elem_id="charla-ding",
+                               container=False)
                 video = gr.Video(label="Video final", height=560)
                 social = gr.Textbox(
                     label="📣 Descripción y hashtags para TikTok/redes",
@@ -439,7 +523,8 @@ def build_app():
         go.click(generate_script, inputs=script_inputs, outputs=script_outputs)
         regen.click(generate_script, inputs=script_inputs, outputs=script_outputs)
         approve.click(approve_and_render, inputs=[draft_state],
-                      outputs=[log, video, summary, social]).then(
+                      outputs=[log, video, summary, social,
+                               eta_bar, ding]).then(
             _refresh_history, outputs=hist_runs)
     return demo
 
