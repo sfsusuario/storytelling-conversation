@@ -5,6 +5,7 @@ voices_preview/
 .chatterbox-venv/
 models/
 .env
+.tiktok_token.json
 __pycache__/
 *.egg-info/
 build/

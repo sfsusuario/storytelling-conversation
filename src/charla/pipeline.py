@@ -9,7 +9,7 @@ from typing import Callable
 
 from .assets import available_emotions, scan_characters, validate_clips
 from .config import (AUDIO_TRIGGER_DELAY, CHARACTERS, TURN_END_DELAY,
-                     PipelineOptions)
+                     PipelineOptions, resolve_background)
 from .ffutil import probe_duration, require_ffmpeg
 from .manifest import write_manifest
 from .models import Timeline, Turn, VoiceSpec, build_timeline
@@ -146,9 +146,12 @@ def generate_script_stage(options: PipelineOptions,
         raise ValueError("Provide an input text/URL or a --script-file")
     if options.script_file and not options.script_file.is_file():
         raise FileNotFoundError(f"Script file not found: {options.script_file}")
-    background = Path(options.background)
-    if not background.is_file():
-        raise FileNotFoundError(f"Background video not found: {background}")
+    # Random pick from backgrounds/ unless an explicit file was given; the
+    # chosen file is pinned in options so stages 2-4, the run hash and the
+    # manifest all see the same background.
+    background = resolve_background(options.background)
+    options.background = background
+    log(f"background: {background}")
 
     chars = scan_characters(Path(options.characters_dir))
     emotions = available_emotions(chars)

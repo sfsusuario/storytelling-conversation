@@ -5,7 +5,7 @@ import sys
 from pathlib import Path
 
 from . import __version__
-from .config import (CHARACTERS, DEFAULT_BACKGROUND, DEFAULT_BG_VOLUME,
+from .config import (BACKGROUNDS_DIR, CHARACTERS, DEFAULT_BG_VOLUME,
                      DEFAULT_CHAR_SCALE, DEFAULT_TTS_ENGINE,
                      DEFAULT_CHROMA_BLEND, DEFAULT_CHROMA_SIMILARITY,
                      DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_LANGUAGE,
@@ -79,8 +79,9 @@ def build_parser() -> argparse.ArgumentParser:
                         f"0..0.6 (default {DEFAULT_BG_VOLUME}; 0 = none)")
     p.add_argument("--no-bg-audio", action="store_true",
                    help="Disable the background ambience entirely")
-    p.add_argument("--background", type=Path, default=DEFAULT_BACKGROUND,
-                   help=f"Background video (default {DEFAULT_BACKGROUND})")
+    p.add_argument("--background", type=Path, default=None,
+                   help="Background video file or directory (default: a "
+                        f"random video from {BACKGROUNDS_DIR}/)")
     p.add_argument("--tts", dest="tts_engine",
                    choices=["edge", "xtts", "chatterbox"], default=None,
                    help="Voice engine: edge (edge-tts, + RVC if installed; "

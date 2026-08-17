@@ -19,6 +19,7 @@ ui = ["gradio>=5.0"]
 [project.scripts]
 charla = "charla.cli:main"
 charla-ui = "charla.ui:main"
+charla-upload = "charla.tiktok:main"
 
 [build-system]
 requires = ["setuptools>=68"]

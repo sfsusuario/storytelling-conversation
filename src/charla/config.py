@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import random
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -36,7 +37,7 @@ DEFAULT_GEMINI_TEXT_MODEL = "gemini-2.5-flash"
 
 DEFAULT_LANGUAGE = os.environ.get("CHARLA_LANGUAGE", "es")
 DEFAULT_WATERMARK = os.environ.get("CHARLA_WATERMARK", "@sfsusers")
-DEFAULT_BG_VOLUME = float(os.environ.get("CHARLA_BG_VOLUME", "0.15"))
+DEFAULT_BG_VOLUME = float(os.environ.get("CHARLA_BG_VOLUME", "0.0"))
 
 # Native character-clip resolution; the 576x1024 background upscales cleanly
 # (same 9:16 aspect) while the on-screen character needs no rescaling at all.
@@ -58,7 +59,26 @@ DEFAULT_CHROMA_SIMILARITY = float(
 DEFAULT_CHROMA_BLEND = float(os.environ.get("CHARLA_CHROMA_BLEND", "0.05"))
 
 CHARACTERS_DIR = Path("characters")
-DEFAULT_BACKGROUND = Path("background.mp4")
+
+# Background videos live in backgrounds/; each run picks one at random.
+# Their own soundtrack is NOT mixed into the final video (bg_volume 0).
+BACKGROUNDS_DIR = Path(os.environ.get("CHARLA_BACKGROUNDS", "backgrounds"))
+
+
+def resolve_background(path: Path | None = None) -> Path:
+    """Concrete background video for a run: the given file as-is, or a
+    random pick among every .mp4 inside the given directory (BACKGROUNDS_DIR
+    by default, subfolders included)."""
+    p = Path(path) if path else BACKGROUNDS_DIR
+    if p.is_file():
+        return p
+    if p.is_dir():
+        candidates = sorted(
+            f for f in p.rglob("*.mp4") if f.is_file())
+        if candidates:
+            return random.choice(candidates)
+        raise FileNotFoundError(f"No .mp4 backgrounds in {p}/")
+    raise FileNotFoundError(f"Background not found: {p}")
 
 # Character overlay size as a fraction of the frame height; each character
 # sits in its own bottom corner (see CharacterSpec.anchor) instead of
@@ -255,8 +275,7 @@ ESTILO — lo más importante; si dudas, elige SIEMPRE la opción más cruel:
 - REGLA DURA: cada línea de rick debe contener al menos UNA púa, burla,
   comparación cruel o comentario nihilista. Rick NUNCA valida a morty,
   nunca lo anima, nunca dice nada amable. Sus insultos son creativos y
-  específicos del tema ("tu memoria de molusco", "tu única neurona de
-  guardia"), no genéricos. Muletillas: "Morty" al final de frases,
+  específicos del tema, no genéricos. Muletillas: "Morty" al final de frases,
   "escucha", "por el amor de la ciencia".
 - rick explica el dato real con desgano, como si le doliera compartir
   oxígeno con alguien tan lento; el universo le parece un chiste malo y lo
@@ -346,7 +365,7 @@ class PipelineOptions:
     watermark: str = DEFAULT_WATERMARK
     subtitles: bool = True
     bg_volume: float = DEFAULT_BG_VOLUME
-    background: Path = DEFAULT_BACKGROUND
+    background: Path | None = None       # None = random pick from backgrounds/
     characters_dir: Path = CHARACTERS_DIR
     char_scale: float = DEFAULT_CHAR_SCALE
     chroma_similarity: float = DEFAULT_CHROMA_SIMILARITY

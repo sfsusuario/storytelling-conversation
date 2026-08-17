@@ -6,7 +6,7 @@ import threading
 import time
 from pathlib import Path
 
-from .config import (CHARACTERS, DEFAULT_BACKGROUND, DEFAULT_BG_VOLUME,
+from .config import (BACKGROUNDS_DIR, CHARACTERS,
                      DEFAULT_CHAR_SCALE,
                      DEFAULT_CHROMA_BLEND, DEFAULT_CHROMA_SIMILARITY,
                      DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_LANGUAGE,
@@ -56,6 +56,19 @@ def _eta_html(elapsed: float, estimate: float | None,
         'overflow:hidden">'
         f'<div style="width:{pct:.1f}%;height:100%;background:{color};'
         'border-radius:6px;transition:width 1s linear"></div>'
+        "</div></div>")
+
+
+def _tiktok_bar_html(label: str, pct: float,
+                     color: str = "#3b82f6") -> str:
+    """Barra de la subida a TikTok (mismo estilo que la barra global)."""
+    return (
+        '<div style="font-family:sans-serif">'
+        f'<div style="margin-bottom:4px;font-size:0.95em">{label}</div>'
+        '<div style="background:#e5e7eb;border-radius:6px;height:14px;'
+        'overflow:hidden">'
+        f'<div style="width:{pct:.1f}%;height:100%;background:{color};'
+        'border-radius:6px;transition:width 0.3s linear"></div>'
         "</div></div>")
 
 
@@ -238,9 +251,9 @@ def build_app():
         review = f'Título: "{draft.script["title"]}"\n\n{dialogue}'
         return draft, review, "\n".join(lines), gr.update(visible=True)
 
-    def approve_and_render(draft, progress=gr.Progress()):
+    def approve_and_render(draft, upload_tiktok, progress=gr.Progress()):
         """Stages 2-4 for the script the user already approved in the
-        review step."""
+        review step, plus the optional TikTok draft upload at the end."""
         if draft is None:
             raise gr.Error("Primero genera (y revisa) un guion.")
 
@@ -281,7 +294,7 @@ def build_app():
                 # No pipeline event this second: refresh only the time bar.
                 yield (gr.skip(), gr.skip(), gr.skip(), gr.skip(),
                        _eta_html(time.monotonic() - started, estimate),
-                       gr.skip())
+                       gr.skip(), gr.skip())
                 continue
             if item is None:
                 finished = True
@@ -308,7 +321,7 @@ def build_app():
             progress(frac, desc=msg.strip()[:70])
             yield ("\n".join(lines), None, gr.skip(), gr.skip(),
                    _eta_html(time.monotonic() - started, estimate),
-                   gr.skip())
+                   gr.skip(), gr.skip())
 
         if "error" in holder:
             raise gr.Error(str(holder["error"]))
@@ -322,7 +335,79 @@ def build_app():
         yield ("\n".join(lines), str(result.final_video), summary,
                result.social or "",
                _eta_html(time.monotonic() - started, estimate, done=True),
-               _ding_html())
+               _ding_html(), "")
+
+        if not (upload_tiktok and result.final_video):
+            return
+
+        # Fase extra: subida a TikTok en modo draft, con su propia barra
+        # (bytes reales vía on_bytes; el estado de publish llega por log).
+        from . import tiktok as tt
+
+        uq: queue.Queue = queue.Queue()
+        upload_holder: dict = {}
+
+        def uploader():
+            try:
+                token = tt.get_token("video.upload", interactive=False)
+                pid = tt.upload_draft(
+                    token, Path(result.final_video),
+                    log=lambda m: uq.put(("log", str(m))),
+                    on_bytes=lambda s, t: uq.put(("bytes", s, t)))
+                tt.wait_publish(token, pid,
+                                log=lambda m: uq.put(("log", str(m))))
+            except Exception as e:  # shown in the red bar below
+                upload_holder["error"] = e
+            finally:
+                uq.put(None)
+
+        threading.Thread(target=uploader, daemon=True).start()
+        lines.append("[5/5] subiendo a TikTok (borrador)")
+        yield ("\n".join(lines),) + (gr.skip(),) * 5 + (
+            _tiktok_bar_html("Conectando con TikTok...", 0.0),)
+
+        mb = 1024 * 1024
+        up_done = False
+        while not up_done:
+            try:
+                items = [uq.get(timeout=0.5)]
+            except queue.Empty:
+                continue
+            while True:  # coalesce backlog: one UI update per batch
+                try:
+                    items.append(uq.get_nowait())
+                except queue.Empty:
+                    break
+            bar, log_dirty = gr.skip(), False
+            for item in items:
+                if item is None:
+                    up_done = True
+                elif item[0] == "bytes":
+                    _, sent, total = item
+                    bar = _tiktok_bar_html(
+                        f"Subiendo a TikTok... {sent / mb:.1f} / "
+                        f"{total / mb:.1f} MB", 100.0 * sent / max(1, total))
+                else:
+                    lines.append("  " + item[1].strip())
+                    log_dirty = True
+                    if "estado:" in item[1]:
+                        bar = _tiktok_bar_html("Procesando en TikTok...",
+                                               100.0)
+            yield ("\n".join(lines) if log_dirty else gr.skip(),
+                   gr.skip(), gr.skip(), gr.skip(), gr.skip(), gr.skip(), bar)
+
+        if "error" in upload_holder:
+            lines.append(f"tiktok: error — {upload_holder['error']}")
+            yield ("\n".join(lines),) + (gr.skip(),) * 5 + (
+                _tiktok_bar_html(f"❌ {upload_holder['error']}", 100.0,
+                                 "#ef4444"),)
+        else:
+            lines.append("tiktok: video en tu bandeja — publícalo desde la app")
+            yield ("\n".join(lines),) + (gr.skip(),) * 5 + (
+                _tiktok_bar_html(
+                    "✅ En tu bandeja de TikTok — abre la app en el teléfono "
+                    "para publicarlo (caption lista en 📣)", 100.0,
+                    "#22c55e"),)
 
     rick, morty = CHARACTERS["rick"], CHARACTERS["morty"]
     with gr.Blocks(title="Charla — conversaciones en video") as demo:
@@ -381,12 +466,25 @@ def build_app():
                     subtitles = gr.Checkbox(
                         value=True, label="Subtítulos del diálogo",
                         info="Blanco para el genio, amarillo para el ayudante")
+                    _tiktok_ok = bool(os.environ.get("TIKTOK_CLIENT_KEY")
+                                      and os.environ.get(
+                                          "TIKTOK_CLIENT_SECRET"))
+                    upload_tiktok = gr.Checkbox(
+                        value=False, interactive=_tiktok_ok,
+                        label="Subir a TikTok al terminar (borrador)"
+                              + ("" if _tiktok_ok
+                                 else " — faltan credenciales en .env"),
+                        info="Sube el video terminado a tu bandeja de TikTok "
+                             "(modo draft): lo publicas desde la app pegando "
+                             "la caption de 📣. Requiere login previo: "
+                             "python -m charla.tiktok --login")
                     bg_enabled = gr.Checkbox(
-                        value=True, label="Audio ambiente del fondo",
-                        info=f"Mezcla el sonido de {DEFAULT_BACKGROUND} bajo "
-                             "las voces")
+                        value=False, label="Audio ambiente del fondo",
+                        info="Mezcla el sonido del video de fondo (elegido "
+                             f"al azar de {BACKGROUNDS_DIR}/) bajo las voces; "
+                             "apagado por defecto")
                     bg_volume = gr.Slider(
-                        0.0, 0.6, value=DEFAULT_BG_VOLUME, step=0.01,
+                        0.0, 0.6, value=0.15, step=0.01,
                         label="Volumen del ambiente")
                     from .chatterbox import chatterbox_available
                     from .rvc import rvc_available
@@ -476,6 +574,7 @@ def build_app():
             # ------------------------- salida --------------------------
             with gr.Column(scale=7):
                 eta_bar = gr.HTML(label="Progreso global")
+                tiktok_bar = gr.HTML(label="Subida a TikTok")
                 ding = gr.HTML(visible=True, elem_id="charla-ding",
                                container=False)
                 video = gr.Video(label="Video final", height=560)
@@ -522,9 +621,10 @@ def build_app():
 
         go.click(generate_script, inputs=script_inputs, outputs=script_outputs)
         regen.click(generate_script, inputs=script_inputs, outputs=script_outputs)
-        approve.click(approve_and_render, inputs=[draft_state],
+        approve.click(approve_and_render,
+                      inputs=[draft_state, upload_tiktok],
                       outputs=[log, video, summary, social,
-                               eta_bar, ding]).then(
+                               eta_bar, ding, tiktok_bar]).then(
             _refresh_history, outputs=hist_runs)
     return demo
 
