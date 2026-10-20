@@ -10,7 +10,8 @@ from .config import (BACKGROUNDS_DIR, CHARACTERS, DEFAULT_BG_VOLUME,
                      DEFAULT_CHROMA_BLEND, DEFAULT_CHROMA_SIMILARITY,
                      DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_LANGUAGE,
                      DEFAULT_MAX_TURNS, DEFAULT_MIN_TURNS,
-                     DEFAULT_TEXT_MODEL, DEFAULT_WATERMARK, DEFAULT_WIDTH,
+                     DEFAULT_OLLAMA_MODEL, DEFAULT_TEXT_MODEL,
+                     DEFAULT_WATERMARK, DEFAULT_WIDTH,
                      CHARACTERS_DIR, PipelineOptions)
 
 EXIT_USAGE, EXIT_API, EXIT_FFMPEG = 1, 2, 3
@@ -80,8 +81,8 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--no-bg-audio", action="store_true",
                    help="Disable the background ambience entirely")
     p.add_argument("--background", type=Path, default=None,
-                   help="Background video file or directory (default: a "
-                        f"random video from {BACKGROUNDS_DIR}/)")
+                   help="Background video file or directory (default: one "
+                        f"video from {BACKGROUNDS_DIR}/, fixed per topic)")
     p.add_argument("--tts", dest="tts_engine",
                    choices=["edge", "xtts", "chatterbox"], default=None,
                    help="Voice engine: edge (edge-tts, + RVC if installed; "
@@ -115,14 +116,18 @@ def build_parser() -> argparse.ArgumentParser:
                    help="Regenerate from this stage onward")
     p.add_argument("--reencode-concat", action="store_true",
                    help="Re-encode when joining clips (fallback for glitchy joins)")
-    p.add_argument("--text-provider", choices=["auto", "claude", "gemini"],
+    p.add_argument("--text-provider",
+                   choices=["auto", "claude", "gemini", "ollama"],
                    default="auto",
-                   help="Which API writes the script: auto (default: Claude "
-                        "if ANTHROPIC_API_KEY is set, else Gemini), claude, "
-                        "or gemini")
+                   help="Who writes the script: auto (default: Claude if "
+                        "ANTHROPIC_API_KEY is set, else Gemini if "
+                        "GOOGLE_API_KEY is set, else a running Ollama), "
+                        "claude, gemini, or ollama (local model, no key)")
     p.add_argument("--text-model", default=DEFAULT_TEXT_MODEL,
-                   help="Model for the script (auto-adjusted to the "
-                        "provider's default when it belongs to the other one)")
+                   help="Model for the script (swapped to the provider's "
+                        "default when it belongs to another one; Ollama "
+                        f"default: {DEFAULT_OLLAMA_MODEL}). With auto, a "
+                        "non-claude/gemini name selects Ollama")
     p.add_argument("--list-emotions", action="store_true",
                    help="List emotions with clips on disk and exit")
     p.add_argument("--version", action="version", version=f"charla {__version__}")
@@ -167,15 +172,27 @@ def options_from_args(args: argparse.Namespace) -> PipelineOptions:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    # Windows consoles/pipes default to cp1252: an emoji in the social
+    # caption would crash the run after the video is already written.
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
+
+    parser = build_parser()
+    args = parser.parse_args(argv)
 
     if args.list_emotions:
         _print_emotions()
         return 0
 
     if not args.input and not args.script_file:
-        build_parser().error("an input text/URL or --script-file is required "
-                             "(or use --list-emotions)")
+        parser.error("an input text/URL or --script-file is required "
+                     "(or use --list-emotions)")
+    if args.min_turns < 2 or args.min_turns > args.max_turns:
+        parser.error(f"turn limits must satisfy 2 <= --min-turns <= "
+                     f"--max-turns (got {args.min_turns} and {args.max_turns})")
 
     from .assets import AssetsError
     from .ffutil import FfmpegError

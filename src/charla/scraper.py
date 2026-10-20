@@ -38,7 +38,10 @@ def fetch_article(url: str, cache_dir: Path, log=print) -> str:
     except requests.RequestException as e:
         raise ScrapeError(f"Could not download {url}: {e}") from e
 
-    text = trafilatura.extract(response.text, include_comments=False,
+    # Raw bytes, not response.text: without a charset header requests falls
+    # back to ISO-8859-1 and garbles accents; trafilatura detects the
+    # encoding itself (meta tags, BOM, heuristics).
+    text = trafilatura.extract(response.content, include_comments=False,
                                favor_precision=True, url=url)
     if not text or not text.strip():
         raise ScrapeError(

@@ -3,6 +3,7 @@ voices_preview/
 .rvc-venv/
 .xtts-venv/
 .chatterbox-venv/
+.chatterbox-xpu-venv/
 models/
 .env
 .tiktok_token.json

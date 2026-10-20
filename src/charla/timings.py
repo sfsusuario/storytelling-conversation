@@ -30,12 +30,21 @@ def _load() -> dict:
         return {}
 
 
-def record_run(engine: str, turns: int, seconds: float) -> None:
+def record_run(engine: str, turns: int, seconds: float,
+               stages: dict | None = None,
+               encoder: str | None = None) -> None:
+    """Append one run. `stages` (e.g. {"voice": s, "render": s}) and
+    `encoder` are informational: estimate_seconds only uses the totals."""
     if turns <= 0 or seconds / max(1, turns) < _MIN_SECONDS_PER_TURN:
         return
     data = _load()
     runs = data.setdefault(engine, [])
-    runs.append({"turns": turns, "seconds": round(seconds, 1)})
+    run: dict = {"turns": turns, "seconds": round(seconds, 1)}
+    if stages:
+        run["stages"] = stages
+    if encoder:
+        run["encoder"] = encoder
+    runs.append(run)
     del runs[:-_KEEP]
     try:
         _FILE.parent.mkdir(parents=True, exist_ok=True)

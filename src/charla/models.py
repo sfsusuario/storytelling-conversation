@@ -26,7 +26,8 @@ class Turn:
     turn_end_delay: float = 0.4
     turn_start: float | None = None      # absolute start in the final video
     turn_duration: float | None = None   # frame-rounded total duration
-    bg_offset: float | None = None       # seek into background.mp4 (continuity)
+    frames: int | None = None            # exact video frames of this turn
+    bg_offset: float | None = None       # seek into the background (continuity)
     char_offset: float | None = None     # seek into the character clip (tail-aligned)
     char_pingpong: bool = False          # long line: forward+mirror loop used
     clip_path: Path | None = None        # rendered clip
@@ -54,21 +55,29 @@ class Timeline:
 def build_timeline(turns: list[Turn], width: int, height: int, fps: int,
                    bg_duration: float, watermark: str = "",
                    subtitles: bool = True) -> Timeline:
-    """Fill in frame-rounded durations, absolute starts and background offsets.
+    """Fill in frame-exact durations, absolute starts and background offsets.
 
     D_i = trigger_delay + audio_duration + end_delay, rounded UP to a whole
-    frame so every clip cuts on a frame boundary. Turns are joined with hard
-    cuts (shot/reverse-shot); the background keeps advancing across cuts:
-    each turn seeks background.mp4 to where the previous turn left it,
-    wrapping at its end.
+    number of frames so every clip cuts on a frame boundary. Turns are joined
+    with hard cuts (shot/reverse-shot); the background keeps advancing across
+    cuts: each turn seeks the background video to where the previous turn
+    left it, wrapping at its end.
+
+    Everything is counted in frames: a background seek that lands between
+    two frames makes ffmpeg emit one extra frame, which shifts every later
+    turn's audio after a stream-copy concat.
     """
-    cursor = 0.0
+    bg_frames = math.floor(bg_duration * fps) if bg_duration > 0 else 0
+    cum_frames = 0
     for turn in turns:
         if turn.audio_duration is None:
             raise ValueError(f"{turn.turn_id} has no audio duration")
-        turn.turn_duration = math.ceil(turn.raw_duration * fps) / fps
-        turn.turn_start = round(cursor, 6)
-        turn.bg_offset = round(cursor % bg_duration, 3) if bg_duration > 0 else 0.0
-        cursor += turn.turn_duration
+        # epsilon: 5.4 s * 30 fps must stay 162 frames, not ceil(162.0000001)
+        turn.frames = max(1, math.ceil(turn.raw_duration * fps - 1e-6))
+        turn.turn_duration = turn.frames / fps
+        turn.turn_start = round(cum_frames / fps, 6)
+        turn.bg_offset = (round((cum_frames % bg_frames) / fps, 6)
+                          if bg_frames else 0.0)
+        cum_frames += turn.frames
     return Timeline(turns=turns, width=width, height=height, fps=fps,
                     watermark=watermark, subtitles=subtitles)

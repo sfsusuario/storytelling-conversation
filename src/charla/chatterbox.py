@@ -11,11 +11,12 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from .config import (CHARACTERS, CHATTERBOX_PYTHON, CHATTERBOX_EXAGGERATION,
-                     XTTS_REFS_DIR)
+                     TORCH_THREADS, TTS_DEVICE, XTTS_REFS_DIR)
 from .ffutil import probe_duration
 from .models import Turn
 from .textnorm import expand_numbers_for_tts
@@ -88,12 +89,22 @@ def synthesize_turns(turns: list[Turn], language: str, audio_dir: Path,
         turn.word_timings = None
 
     if pending:
-        spec = {"language": language, "jobs": list(jobs.values())}
+        spec = {"language": language, "device": TTS_DEVICE,
+                "threads": TORCH_THREADS, "jobs": list(jobs.values())}
         jobs_file = audio_dir / "_cbx_jobs.json"
         jobs_file.write_text(json.dumps(spec, ensure_ascii=False, indent=2),
                              encoding="utf-8")
         log(f"  chatterbox: sintetizando {len(pending)} líneas (GPU si hay; "
             "la 1.ª vez descarga el modelo ~3 GB)...")
+        threads = str(TORCH_THREADS)
+        env = {**os.environ,
+               # the pipe is decoded as utf-8 below, whatever the locale
+               "PYTHONIOENCODING": "utf-8",
+               # no per-token progress bars flooding the pipe
+               "TQDM_DISABLE": "1",
+               "OMP_NUM_THREADS": threads, "MKL_NUM_THREADS": threads,
+               # Intel XPU: run ops it lacks on the CPU instead of failing
+               "PYTORCH_ENABLE_XPU_FALLBACK": "1"}
         # Streamed (not subprocess.run(capture_output=True)): a single big
         # batch can take minutes on GPU, and a fully silent generator that
         # long makes Gradio's UI (especially through the Colab share tunnel)
@@ -106,13 +117,16 @@ def synthesize_turns(turns: list[Turn], language: str, audio_dir: Path,
         proc = subprocess.Popen(
             [str(CHATTERBOX_PYTHON), str(_WORKER), str(jobs_file)],
             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
-            text=True, bufsize=1)
+            stdin=subprocess.DEVNULL, env=env,
+            text=True, encoding="utf-8", errors="replace", bufsize=1)
         assert proc.stdout is not None
         for line in proc.stdout:
             line = line.rstrip("\n")
             tail.append(line)
             del tail[:-15]
-            if line.startswith("synthesized: "):
+            if line.startswith(("device: ", "model: ")):
+                log(f"  chatterbox {line}")
+            elif line.startswith("synthesized: "):
                 found = by_path.get(line[len("synthesized: "):])
                 if found:
                     turn, out, meta, stamp = found

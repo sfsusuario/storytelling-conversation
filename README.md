@@ -14,20 +14,26 @@ chroma verde en lugar de imágenes por escena.
 
 ```
 tema o URL ──► [scraper]  requests + trafilatura (solo URLs)
-           ──► [guion]    Claude/Gemini con salida estructurada:
-                          turnos {speaker, emotion, line} + caption + hashtags.
-                          Solo puede elegir emociones con clip en disco.
-           ──► [tts]      edge-tts, una voz por personaje (word timings)
-           ──► [render]   ffmpeg: personaje a pantalla completa con colorkey
-                          sobre background.mp4 (el fondo avanza continuo entre
-                          cortes), subtítulos por palabra, concat y ambiente
+           ──► [guion]    Claude / Gemini / Ollama (local) con salida
+                          estructurada: turnos {speaker, emotion, line} +
+                          caption + hashtags. Solo puede elegir emociones con
+                          clip en disco.
+           ──► [tts]      edge-tts, una voz por personaje (word timings),
+                          varias líneas a la vez — o voz clonada (Chatterbox)
+           ──► [render]   ffmpeg: cada personaje en su esquina con colorkey
+                          sobre un fondo de backgrounds/ (avanza continuo
+                          entre cortes), subtítulos por palabra; turnos en
+                          paralelo con Quick Sync/NVENC/x264, concat y ambiente
 ```
 
 ## Requisitos
 
 - Python 3.11+ y ffmpeg (el instalador lo resuelve)
-- Clave de API para el guion: `ANTHROPIC_API_KEY` (Claude) o
-  `GOOGLE_API_KEY` (Gemini). El modo `--script-file` no necesita ninguna.
+- Para el guion, una de estas opciones:
+  - `ANTHROPIC_API_KEY` (Claude) o `GOOGLE_API_KEY` (Gemini) en `.env`.
+  - [Ollama](https://ollama.com) corriendo con un modelo local (gratis, sin
+    clave): `ollama pull gemma3:4b`.
+  - El modo `--script-file` no necesita ninguna.
 
 ## Instalación
 
@@ -47,6 +53,10 @@ charla --script-file examples\demo_script.json
 # tema libre
 charla "los pulpos tienen tres corazones y sangre azul"
 
+# guion con un modelo local de Ollama (gratis, sin clave)
+charla "los pulpos tienen tres corazones" --text-provider ollama
+charla "tema" --text-model gpt-oss:20b      # en auto, un modelo no-Claude/Gemini = Ollama
+
 # URL de noticia (se extrae el artículo y se guioniza)
 charla https://ejemplo.com/noticia
 
@@ -54,15 +64,66 @@ charla https://ejemplo.com/noticia
 charla "tema" --dry-run
 
 # asistente guiado / interfaz web
-.\run-cli.ps1
+.\run-cli.ps1     # escribe ? como tema para elegir de una lluvia de ideas
 .\run-ui.ps1      # o: charla-ui
 ```
 
-Flags útiles: `--language`, `--max-turns`, `--rick-voice/-rate/-pitch`,
-`--morty-*`, `--resolution`, `--fps`, `--bg-volume` / `--no-bg-audio`,
+**Lluvia de ideas.** En la interfaz, el botón **💡 Lluvia de ideas** (bajo
+el campo del tema) abre un panel con 8 temas para elegir:
+- **Datos verificados:** salen del banco de ciencia, se pueden filtrar por
+  área (astronomía, cuerpo humano...).
+- **Ideas nuevas con Ollama:** sin verificar, hay que revisarlas.
+
+**🎲 Otras ideas** trae otra tanda y **Usar este tema** lo pone en el campo.
+Cuando el tema es un dato del banco, el guionista recibe además sus
+detalles comprobados (vale también si lo escribes tal cual en la línea de
+comandos).
+
+Flags útiles: `--language`, `--max-turns` / `--min-turns`,
+`--text-provider {auto,claude,gemini,ollama}`, `--text-model`,
+`--tts {edge,xtts,chatterbox}`, `--rvc {auto,on,off}`,
+`--rick-voice/-rate/-pitch`, `--morty-*`, `--resolution`, `--fps`,
+`--background`, `--char-scale`, `--bg-volume` / `--no-bg-audio`,
 `--chroma-similarity/-blend`, `--no-subtitles`, `--no-watermark`,
-`--force` / `--force-from {script,tts,render}`, `--text-provider`,
+`--force` / `--force-from {script,tts,render}`, `--reencode-concat`,
 `--list-emotions`. Ver `charla --help`.
+
+## Lote automático (varios videos de ciencia con Ollama)
+
+Apartado opcional que genera varios videos seguidos sin intervenir, con el
+guion escrito por un modelo local de Ollama (sin claves de API):
+
+```powershell
+.\run-lote.ps1                          # asistente guiado
+charla-lote --count 5                   # 5 videos con temas del banco verificado
+charla-lote --count 3 --theme astronomía --tts chatterbox
+charla-lote --only-topics --count 5     # solo elegir temas -> output\_lote\temas_propuestos.txt
+charla-lote --topics-file mis_temas.txt # usar tus temas (uno por línea)
+charla-lote --source ollama --count 3   # temas inventados por el modelo (¡revísalos!)
+```
+
+En la interfaz está en **🤖 Lote automático** (abajo): proponer temas
+(editables antes de generar), generar, y detener tras el video actual.
+
+- **Temas.** Por defecto salen de un banco de ~60 datos científicos
+  verificados (`src/charla/data/temas_ciencia.json`), cada uno con detalles
+  que el guionista usa como fuente, así inventa menos. Nunca se repite un
+  tema ya usado en lotes anteriores (`output/_lote/temas_usados.json`).
+  `--source ollama` pide los temas al modelo, pero medido en este equipo
+  gemma3:4b y gpt-oss:20b inventaban la mayoría de las cifras: revísalos
+  antes de publicar.
+- **Videos.** Cada tema pasa por el pipeline normal: guion con Ollama
+  (`--model`, por defecto `gemma3:4b`), voz y render. Si un video falla, el
+  lote sigue con el siguiente.
+- **Resultado.** Queda en `output/_lote/<fecha>/`:
+  - `01 - <título>.mp4`, `02 - ...`: los videos numerados.
+  - `01 - <título>.txt`: título, descripción y hashtags de ese video.
+  - `publicar.txt`: todos los bloques "TÍTULO / DESCRIPCIÓN" juntos, para
+    copiar y pegar al publicar.
+  - `temas.txt` y `lote.json`: temas y resumen (tiempos, errores).
+
+El guion de un modelo local chico puede colar algún dato inexacto aunque el
+tema sea correcto: mira el video antes de publicarlo.
 
 ## Assets
 
@@ -70,8 +131,12 @@ Flags útiles: `--language`, `--max-turns`, `--rick-voice/-rate/-pitch`,
   chroma (720x1280, 24 fps), uno por emoción. El guionista solo puede usar
   emociones cuyo clip exista para **ambos** personajes: al añadir un clip
   nuevo (p. ej. `sorpresa_shock`) entra solo, sin tocar código.
-- `background.mp4` — fondo común; avanza de forma continua a lo largo de la
-  conversación y su audio se mezcla a bajo volumen como ambiente.
+- `backgrounds/*.mp4` — uno o más videos de fondo (cualquier tamaño 9:16).
+  Cada tema usa siempre el mismo (elegido por un hash del tema, así repetir
+  un comando reutiliza la caché); `--background` fuerza uno. El fondo avanza
+  de forma continua a lo largo de la conversación; su audio solo se mezcla
+  como ambiente con `--bg-volume` > 0 (apagado por defecto). Un
+  `background.mp4` suelto en la raíz sigue funcionando si no hay carpeta.
 
 Dinamismo de los clips: cada turno corto reproduce la **cola** del loop de
 emoción (arranca en `dur_clip − dur_turno`, terminando con el clip), así dos
@@ -106,7 +171,8 @@ timings de edge-tts se conservan, así que los subtítulos siguen sincronizados.
 Con RVC activo la fuente TTS se genera SIN pitch/rate artificiales (el audio
 distorsionado produce artefactos en la conversión); el tono del personaje se
 ajusta con la transposición del propio RVC en semitonos:
-`CHARLA_RICK_RVC_PITCH` (0 por defecto) y `CHARLA_MORTY_RVC_PITCH` (+8).
+`CHARLA_RICK_RVC_PITCH` (+2 por defecto) y `CHARLA_MORTY_RVC_PITCH` (+10),
+calibrados sobre la voz fuente `es-MX-DaliaNeural`.
 En `voices_preview/rvc/` hay muestras comparando pitches y checkpoints —
 escúchalas para calibrar. Ten en cuenta el límite de la técnica: RVC clona el
 timbre, no la actuación; la entonación sigue siendo la del TTS.
@@ -149,18 +215,22 @@ flags o `.env`.
 
 Cada personaje aparece en su esquina inferior (rick derecha, morty
 izquierda, mirándose) a `--char-scale` de la altura del frame (0.72 por
-defecto), dejando libre la parte superior, donde van los subtítulos con la
-fuente **Get Schwifty** (recreación fan del logo de la serie, freeware no
-comercial, en `assets/fonts/`). La fuente solo trae letras y números, así
-que el texto del subtítulo se normaliza para display (sin tildes ni signos);
-si borras el ttf se vuelve a Arial Bold con el texto íntegro.
+defecto), dejando libre la parte superior, donde van los subtítulos en
+**Comic Sans Bold** (viene con Windows; si falta se usa Comic Neue de
+`assets/fonts/`, luego Arial Bold o DejaVu). Opcional:
+`CHARLA_SUB_FONT=assets/fonts/get_schwifty.ttf` usa **Get Schwifty**
+(recreación fan del logo de la serie, freeware no comercial); esa fuente
+solo trae letras y números, así que el subtítulo se normaliza (sin tildes
+ni signos).
 
 ## Modo Colab (GPU gratis para todo el pipeline)
 
 [colab/charla_colab.ipynb](colab/charla_colab.ipynb) corre el generador
 completo en Google Colab con GPU. El código se **clona de este repo** en cada
 sesión; tu Drive (`MyDrive/charla/`) solo aporta lo que no viaja por git:
-`characters/`, `background.mp4`, `voices_preview/reales/` y tu `.env`.
+`characters/`, `backgrounds/` (o un `background.mp4` suelto),
+`voices_preview/reales/` y tu `.env`. En Colab el render usa NVENC si el
+ffmpeg lo trae (si no, libx264).
 
 Abrir el cuaderno (siempre la última versión del repo):
 `https://colab.research.google.com/github/sfsusuario/storytelling-conversation/blob/main/colab/charla_colab.ipynb`
@@ -178,11 +248,77 @@ pasar por GitHub: genera `charla_code.zip` para subirlo a Drive a mano.)
 ```
 output/<slug>-<hash>/
 ├── 01_script/  script.json (+ article.json si hubo URL)
-├── 02_audio/   turn_NN.mp3 + word timings
+├── 02_audio/   turn_NN.mp3 + word timings (edge) · turn_NN.cbx.wav
+│               (chatterbox) · turn_NN.rvc.wav / .xtts.wav
 ├── 03_clips/   turn_NN.mp4 + concat + premix
 ├── final.mp4   720x1280 @ 30fps, H.264 + AAC
 ├── social.txt  caption + hashtags listos para publicar
-└── manifest.json
+└── manifest.json  (incluye motor de voz, encoder y frames por turno)
+output/_cache/  ping-pong de personajes, fondos pre-escalados, sondeo de clips
+output/_timings.json  duración de cada corrida (voz / render), para la ETA
 ```
 
-Todo está cacheado por etapa: repetir un comando no regenera lo que no cambió.
+Todo está cacheado por etapa: repetir un comando no regenera lo que no
+cambió. La carpeta depende solo de lo que define el **guion** (tema, idioma,
+proveedor/modelo, turnos): cambiar chroma, subtítulos, voces o motor de voz
+reutiliza el guion y el audio ya generados y solo rehace lo necesario.
+
+## Rendimiento
+
+El render elige solo el encoder más rápido disponible (`CHARLA_VIDEO_ENCODER=auto`:
+Intel Quick Sync → NVIDIA NVENC → libx264), renderiza varios turnos a la vez
+(`CHARLA_RENDER_JOBS`, por defecto núcleos/2 hasta 3) sobre una copia del
+fondo ya escalada a 720x1280 (`CHARLA_BG_PROXY`, se crea una vez por fondo),
+y pide las líneas de edge-tts en paralelo (`CHARLA_EDGE_CONCURRENCY`). Cada
+turno sale con el número exacto de frames y de muestras de audio, así el
+concat sin recodificar no se desfasa.
+
+Medido en un Intel Core Ultra 7 258V (Arc 140V, 32 GB), demo de 4 turnos
+(38,8 s de video) sobre un fondo HEVC 1080p, con caches calientes:
+
+| Corrida | Antes | Ahora |
+|---|---|---|
+| edge-tts: voz | 4,8 s | 1,6 s |
+| edge-tts: render | 19,2 s | 8,5 s |
+| edge-tts: total | 24,8 s | 10,4 s |
+| chatterbox: render | 22,2 s | 7,4 s |
+| chatterbox: voz | 213,6 s (CPU) | 120 s (GPU Arc, XPU) |
+| chatterbox: total | 238,5 s | 127 s |
+
+La primera vez con cada fondo se suma su pre-escalado (~20 s para 3 min de
+1080p HEVC).
+
+**Chatterbox en la GPU Intel (XPU).** En CPU la voz clonada va a ~5,7 s de
+cómputo por segundo de audio, igual con 4 que con 8 hilos. Con
+`.\install-chatterbox.ps1 -Xpu` (venv aparte `.chatterbox-xpu-venv` con
+PyTorch 2.6 XPU; el de CPU no se toca) baja a ~3,4 s: ~1,7× más rápido por
+línea. La primera línea de cada corrida tarda ~20 s más mientras compila los
+kernels de la GPU. Para usarlo, en `.env`:
+
+```
+CHARLA_CHATTERBOX_PYTHON=.chatterbox-xpu-venv/Scripts/python.exe
+```
+
+Si además usas Ollama, `CHARLA_OLLAMA_KEEP_ALIVE=0` libera el modelo de
+texto en cuanto termina el guion, para que no compita por la memoria
+compartida de la GPU. `scripts/bench_chatterbox.py` mide cualquier
+combinación (`--device cpu|xpu --threads N`) y deja wavs en `output/_bench/`
+para comparar a oído.
+
+### Ollama (guion local)
+
+`--text-provider ollama` (o `auto` sin claves de API) escribe el guion con un
+modelo local vía `OLLAMA_HOST` (por defecto `127.0.0.1:11434`) y la misma
+salida estructurada que Claude/Gemini. Si el guion sale largo (más de 160
+palabras) se reintenta una vez pidiéndole acortarlo. Probado en el mismo
+equipo (Ollama 0.40, Arc 140V, prompt real):
+
+| Modelo | Tiempo | Resultado |
+|---|---|---|
+| `gemma3:4b` (por defecto) | ~1 min | JSON válido; tiende a alargarse (reintento automático) |
+| `gpt-oss:20b` | ~2,5 min | JSON válido, largo correcto, contenido más flojo |
+| `qwen3:8b`, `llama3.1:8b` | — | fallan con el prompt largo ("token repeat limit") |
+
+Variables: `CHARLA_OLLAMA_MODEL`, `CHARLA_OLLAMA_NUM_CTX`,
+`CHARLA_OLLAMA_TIMEOUT`, `CHARLA_OLLAMA_KEEP_ALIVE`, `CHARLA_OLLAMA_THINK`
+(ver `.env.example`).

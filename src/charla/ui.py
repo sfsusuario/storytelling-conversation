@@ -6,13 +6,20 @@ import threading
 import time
 from pathlib import Path
 
-from .config import (BACKGROUNDS_DIR, CHARACTERS,
+from .config import (BACKGROUNDS_DIR, CHARACTERS, DEFAULT_BATCH_THEME,
+                     DEFAULT_BG_VOLUME,
                      DEFAULT_CHAR_SCALE,
                      DEFAULT_CHROMA_BLEND, DEFAULT_CHROMA_SIMILARITY,
-                     DEFAULT_FPS, DEFAULT_HEIGHT, DEFAULT_LANGUAGE,
-                     DEFAULT_MAX_TURNS, DEFAULT_MIN_TURNS,
-                     DEFAULT_TEXT_MODEL, DEFAULT_WATERMARK, DEFAULT_WIDTH,
+                     DEFAULT_FPS, DEFAULT_GEMINI_TEXT_MODEL, DEFAULT_HEIGHT,
+                     DEFAULT_LANGUAGE, DEFAULT_MAX_TURNS, DEFAULT_MIN_TURNS,
+                     DEFAULT_OLLAMA_MODEL, DEFAULT_TEXT_MODEL,
+                     DEFAULT_TTS_ENGINE, DEFAULT_WATERMARK, DEFAULT_WIDTH,
                      LANGUAGE_NAMES, PipelineOptions)
+
+_AUTO_PROVIDER = "auto (Claude → Gemini → Ollama)"
+# Families that abort with "token repeat limit" on the long script prompt
+# on Intel iGPUs (measured with Ollama 0.40); flagged in the model list.
+_OLLAMA_FLAKY = ("llama3.1", "qwen3")
 
 _DEMO_SCRIPT = Path("examples/demo_script.json")
 
@@ -103,8 +110,83 @@ def _ding_html() -> str:
     return f'<audio autoplay src="{_DING_CACHE["uri"]}"></audio>'
 
 
+def _language_label(code: str) -> str:
+    return f"{code} — {LANGUAGE_NAMES.get(code, code)}"
+
+
 def _language_choices() -> list[str]:
-    return [f"{code} — {name}" for code, name in LANGUAGE_NAMES.items()]
+    codes = list(LANGUAGE_NAMES)
+    if DEFAULT_LANGUAGE not in codes:   # e.g. CHARLA_LANGUAGE=ca
+        codes.insert(0, DEFAULT_LANGUAGE)
+    return [_language_label(code) for code in codes]
+
+
+_ALL_AREAS = "(todas)"
+_AREA_ICONS = {
+    "animales": "🐾", "biología": "🧬", "genética": "🧬", "botánica": "🌱",
+    "paleontología": "🦈", "cuerpo humano": "🫀", "astronomía": "🔭",
+    "espacio": "🚀", "física": "⚡", "química": "⚗️", "geología": "🌋",
+    "geografía": "🗺️", "ecología": "🌊", "historia de la ciencia": "📜",
+    "tecnología": "💻", "matemáticas": "🔢",
+}
+_IDEAS_PER_ROUND = 8
+
+
+def _bank_areas() -> list[str]:
+    from .batch import bank_areas
+    return bank_areas()
+
+
+def _idea_choices(source: str, area: str, model: str | None,
+                  exclude: list[str]) -> list[tuple[str, str]]:
+    """(label, topic) pairs for the idea picker: verified bank facts, or
+    fresh ideas from Ollama. A round that runs out of unseen bank facts
+    starts over instead of coming back empty."""
+    from .batch import BatchError, generate_topics
+    from .script_gen import model_for
+
+    area = (area or "").strip()
+    theme = DEFAULT_BATCH_THEME if area in ("", _ALL_AREAS) else area
+    model = model_for("ollama", model)
+
+    def draw(excluded: list[str]):
+        return generate_topics(_IDEAS_PER_ROUND, source, theme, model,
+                               DEFAULT_LANGUAGE, exclude=excluded,
+                               log=lambda *_: None)
+    try:
+        topics = draw(exclude)
+    except BatchError:
+        if not exclude:
+            raise
+        topics = draw([])
+    unverified = "  (sin verificar)" if source == "ollama" else ""
+    return [(f"{_AREA_ICONS.get(t.area.lower(), '💡')} {t.tema}{unverified}",
+             t.tema) for t in topics]
+
+
+def _model_choices(provider: str, current: str | None):
+    """(choices, value) of the text-model dropdown for a provider."""
+    provider = str(provider).split(" ")[0]
+    current = (current or "").strip()
+    if provider == "ollama":
+        from .script_gen import list_ollama_models
+        models = list_ollama_models() or []
+        names = [DEFAULT_OLLAMA_MODEL] + [m for m in models
+                                          if m != DEFAULT_OLLAMA_MODEL]
+        choices = [(f"{m}  ⚠ puede fallar con prompts largos"
+                    if m.startswith(_OLLAMA_FLAKY) else m, m) for m in names]
+        value = current if current in names else DEFAULT_OLLAMA_MODEL
+        return choices, value, models is not None and bool(models)
+    if provider == "gemini":
+        value = current if current.startswith("gemini") \
+            else DEFAULT_GEMINI_TEXT_MODEL
+        return [DEFAULT_GEMINI_TEXT_MODEL], value, True
+    if provider == "claude":
+        value = current if current.startswith("claude") else DEFAULT_TEXT_MODEL
+        return [DEFAULT_TEXT_MODEL], value, True
+    # auto: keep whatever is there (a non-claude/gemini name means Ollama)
+    return ([DEFAULT_TEXT_MODEL, DEFAULT_GEMINI_TEXT_MODEL,
+             DEFAULT_OLLAMA_MODEL], current or DEFAULT_TEXT_MODEL, True)
 
 
 def _history_runs() -> list[tuple[str, str]]:
@@ -158,6 +240,36 @@ def _load_history_run(video_path: str | None):
 def build_app():
     import gradio as gr
 
+    def _render_fields(subtitles, watermark, bg_enabled, bg_volume, use_rvc,
+                       tts_engine, rick_voice, rick_rate, rick_pitch,
+                       morty_voice, morty_rate, morty_pitch, resolution, fps,
+                       chroma_similarity, chroma_blend, char_scale) -> dict:
+        """Render/voice controls -> PipelineOptions fields (all of them in
+        pipeline.RENDER_FIELDS). The single place that parses them: used
+        when writing the script and again on approve, so edits made in
+        between are honoured."""
+        try:
+            width, height = (int(x) for x in str(resolution).lower().split("x"))
+        except ValueError:
+            raise gr.Error(f"Resolución inválida '{resolution}', formato AnchoxAlto")
+        return dict(
+            width=width, height=height, fps=int(fps),
+            watermark=(watermark or "").strip(),
+            subtitles=bool(subtitles),
+            bg_volume=float(bg_volume or 0.0) if bg_enabled else 0.0,
+            tts_engine=str(tts_engine),
+            rvc="on" if use_rvc else "off",
+            chroma_similarity=float(chroma_similarity),
+            chroma_blend=float(chroma_blend),
+            char_scale=float(char_scale),
+            rick_voice=rick_voice or None,
+            rick_rate=(rick_rate or "").strip() or None,
+            rick_pitch=(rick_pitch or "").strip() or None,
+            morty_voice=morty_voice or None,
+            morty_rate=(morty_rate or "").strip() or None,
+            morty_pitch=(morty_pitch or "").strip() or None,
+        )
+
     def _build_options(topic, use_demo, language, max_turns, subtitles,
                        watermark, bg_enabled, bg_volume, use_rvc, tts_engine,
                        text_provider, rick_voice, rick_rate, rick_pitch,
@@ -169,28 +281,8 @@ def build_app():
         if not use_demo and not topic:
             raise gr.Error("Escribe un tema o URL de noticia (o marca "
                            "'Guion de ejemplo' para probar sin LLM).")
-        provider = str(text_provider).split(" ")[0]
-        if not use_demo:
-            have_claude = bool(os.environ.get("ANTHROPIC_API_KEY"))
-            have_google = bool(os.environ.get("GOOGLE_API_KEY")
-                               or os.environ.get("GEMINI_API_KEY"))
-            if provider == "claude" and not have_claude:
-                raise gr.Error("ANTHROPIC_API_KEY no está configurada. Ponla "
-                               "en .env (o cambia el proveedor a auto/gemini) "
-                               "y reinicia.")
-            if provider == "gemini" and not have_google:
-                raise gr.Error("GOOGLE_API_KEY / GEMINI_API_KEY no está "
-                               "configurada. Ponla en .env y reinicia.")
-            if provider == "auto" and not (have_claude or have_google):
-                raise gr.Error("No hay ninguna clave de API: pon "
-                               "ANTHROPIC_API_KEY (Claude) o GOOGLE_API_KEY "
-                               "(Gemini) en .env y reinicia, o marca 'Guion "
-                               "de ejemplo'.")
-        try:
-            width, height = (int(x) for x in str(resolution).lower().split("x"))
-        except ValueError:
-            raise gr.Error(f"Resolución inválida '{resolution}', formato AnchoxAlto")
-
+        # No API-key check here: a cached script needs none and Ollama
+        # needs none at all; the pipeline raises a clear error otherwise.
         return PipelineOptions(
             input_text="" if use_demo else topic,
             script_file=_DEMO_SCRIPT if use_demo else None,
@@ -198,25 +290,15 @@ def build_app():
             language=str(language).split(" ")[0],
             max_turns=int(max_turns),
             min_turns=min(DEFAULT_MIN_TURNS, int(max_turns)),
-            width=width, height=height, fps=int(fps),
-            watermark=(watermark or "").strip(),
-            subtitles=bool(subtitles),
-            bg_volume=float(bg_volume or 0.0) if bg_enabled else 0.0,
-            tts_engine=str(tts_engine),
-            rvc="on" if use_rvc else "off",
-            chroma_similarity=float(chroma_similarity),
-            chroma_blend=float(chroma_blend),
-            char_scale=float(char_scale),
             output_dir=Path(output_dir) if output_dir else None,
             force=bool(force),
-            text_provider=provider,
-            text_model=text_model,
-            rick_voice=rick_voice or None,
-            rick_rate=(rick_rate or "").strip() or None,
-            rick_pitch=(rick_pitch or "").strip() or None,
-            morty_voice=morty_voice or None,
-            morty_rate=(morty_rate or "").strip() or None,
-            morty_pitch=(morty_pitch or "").strip() or None,
+            text_provider=str(text_provider).split(" ")[0],
+            text_model=(text_model or "").strip() or DEFAULT_TEXT_MODEL,
+            **_render_fields(subtitles, watermark, bg_enabled, bg_volume,
+                             use_rvc, tts_engine, rick_voice, rick_rate,
+                             rick_pitch, morty_voice, morty_rate,
+                             morty_pitch, resolution, fps, chroma_similarity,
+                             chroma_blend, char_scale),
         )
 
     def generate_script(topic, use_demo, language, max_turns, subtitles,
@@ -251,14 +333,34 @@ def build_app():
         review = f'Título: "{draft.script["title"]}"\n\n{dialogue}'
         return draft, review, "\n".join(lines), gr.update(visible=True)
 
-    def approve_and_render(draft, upload_tiktok, progress=gr.Progress()):
+    def approve_and_render(draft, upload_tiktok, subtitles, watermark,
+                           bg_enabled, bg_volume, use_rvc, tts_engine,
+                           rick_voice, rick_rate, rick_pitch, morty_voice,
+                           morty_rate, morty_pitch, resolution, fps,
+                           chroma_similarity, chroma_blend, char_scale,
+                           progress=gr.Progress()):
         """Stages 2-4 for the script the user already approved in the
-        review step, plus the optional TikTok draft upload at the end."""
+        review step, plus the optional TikTok draft upload at the end.
+
+        Render/voice controls are read again here: changes made after
+        "Generar guion" apply to this render (the stored draft itself is
+        never mutated)."""
         if draft is None:
             raise gr.Error("Primero genera (y revisa) un guion.")
 
-        from .pipeline import continue_pipeline
+        from .pipeline import continue_pipeline, with_render_options
         from .timings import engine_key, estimate_seconds
+
+        try:
+            draft = with_render_options(draft, **_render_fields(
+                subtitles, watermark, bg_enabled, bg_volume, use_rvc,
+                tts_engine, rick_voice, rick_rate, rick_pitch, morty_voice,
+                morty_rate, morty_pitch, resolution, fps, chroma_similarity,
+                chroma_blend, char_scale))
+        except gr.Error:
+            raise
+        except Exception as e:
+            raise gr.Error(str(e))
 
         q: queue.Queue = queue.Queue()
         holder: dict = {}
@@ -279,6 +381,8 @@ def build_app():
         #   recorded duration of past runs (output/_timings.json)
         import re
         turn_total = len(draft.turns)
+        # one audio line per turn and engine pass (edge + RVC = two)
+        audio_total = turn_total * (2 if draft.use_rvc else 1)
         estimate = estimate_seconds(
             engine_key(draft.options.tts_engine, draft.use_rvc), turn_total)
         started = time.monotonic()
@@ -308,10 +412,10 @@ def build_app():
             elif msg.startswith("[4/4]"):
                 frac = max(frac, 0.60)
             if turn_total:
-                if re.match(r"^  (tts|rvc|xtts|chatterbox|pingpong):", msg):
+                if re.match(r"^  (tts|rvc|xtts|chatterbox): turn_\d+", msg):
                     audio_done += 1
                     frac = max(frac, 0.05 + 0.50
-                               * min(1.0, audio_done / turn_total))
+                               * min(1.0, audio_done / audio_total))
                 elif re.match(r"^  clip:", msg):
                     clip_done += 1
                     frac = max(frac, 0.60 + 0.38
@@ -426,6 +530,33 @@ def build_app():
                     placeholder='p. ej. "los pulpos tienen tres corazones" '
                                 "o https://ejemplo.com/noticia",
                     lines=2)
+                ideas_btn = gr.Button("💡 Lluvia de ideas", size="sm")
+
+                # Inline "modal" (Gradio has no dialog component): a panel
+                # that opens under the topic box and closes on pick.
+                with gr.Column(visible=False, variant="panel") as ideas_panel:
+                    gr.Markdown(
+                        "**💡 Lluvia de ideas** — elige un tema y pulsa "
+                        "*Usar este tema*. Los datos verificados llevan "
+                        "detalles comprobados que recibe el guionista.")
+                    with gr.Row():
+                        ideas_source = gr.Radio(
+                            [("Datos verificados", "bank"),
+                             ("Ideas nuevas con Ollama (revísalas)",
+                              "ollama")],
+                            value="bank", label="Origen", scale=3)
+                        ideas_area = gr.Dropdown(
+                            [_ALL_AREAS] + _bank_areas(), value=_ALL_AREAS,
+                            allow_custom_value=True, label="Área",
+                            scale=2)
+                    ideas_list = gr.Radio([], label="Ideas",
+                                          interactive=True)
+                    ideas_shown = gr.State([])
+                    with gr.Row():
+                        ideas_more = gr.Button("🎲 Otras ideas", size="sm")
+                        ideas_use = gr.Button("✅ Usar este tema",
+                                              variant="primary", size="sm")
+                        ideas_close = gr.Button("Cerrar", size="sm")
                 use_demo = gr.Checkbox(
                     value=False,
                     label="Guion de ejemplo — prueba gratis (sin LLM)",
@@ -453,8 +584,7 @@ def build_app():
                     with gr.Row():
                         language = gr.Dropdown(
                             _language_choices(),
-                            value=f"{DEFAULT_LANGUAGE} — "
-                                  f"{LANGUAGE_NAMES[DEFAULT_LANGUAGE]}",
+                            value=_language_label(DEFAULT_LANGUAGE),
                             label="Idioma del diálogo")
                         max_turns = gr.Slider(
                             4, 16, value=DEFAULT_MAX_TURNS, step=1,
@@ -479,12 +609,13 @@ def build_app():
                              "la caption de 📣. Requiere login previo: "
                              "python -m charla.tiktok --login")
                     bg_enabled = gr.Checkbox(
-                        value=False, label="Audio ambiente del fondo",
-                        info="Mezcla el sonido del video de fondo (elegido "
-                             f"al azar de {BACKGROUNDS_DIR}/) bajo las voces; "
-                             "apagado por defecto")
+                        value=DEFAULT_BG_VOLUME > 0,
+                        label="Audio ambiente del fondo",
+                        info="Mezcla el sonido del video de fondo (uno de "
+                             f"{BACKGROUNDS_DIR}/, fijo para cada tema) bajo "
+                             "las voces; se omite si el fondo no tiene audio")
                     bg_volume = gr.Slider(
-                        0.0, 0.6, value=0.15, step=0.01,
+                        0.0, 0.6, value=DEFAULT_BG_VOLUME or 0.15, step=0.01,
                         label="Volumen del ambiente")
                     from .chatterbox import chatterbox_available
                     from .rvc import rvc_available
@@ -503,7 +634,9 @@ def build_app():
                     _engines = (["edge"] + (["xtts"] if _xtts_ok else [])
                                 + (["chatterbox"] if _cbx_ok else []))
                     tts_engine = gr.Radio(
-                        _engines, value="edge",
+                        _engines,
+                        value=(DEFAULT_TTS_ENGINE
+                               if DEFAULT_TTS_ENGINE in _engines else "edge"),
                         label="Motor de voz",
                         info="edge = edge-tts (+RVC si está activo), rápido "
                              "y con subtítulos por palabra. xtts / "
@@ -547,11 +680,12 @@ def build_app():
 
                 with gr.Accordion("Avanzado", open=False):
                     text_provider = gr.Dropdown(
-                        ["auto (Claude si hay clave, si no Gemini)",
-                         "claude", "gemini"],
-                        value="auto (Claude si hay clave, si no Gemini)",
+                        [_AUTO_PROVIDER, "claude", "gemini", "ollama"],
+                        value=_AUTO_PROVIDER,
                         label="Proveedor de texto",
-                        info="Con 'gemini' basta la clave de Google")
+                        info="auto usa la primera opción disponible; "
+                             "'ollama' = modelo local gratis, sin clave "
+                             f"(por defecto {DEFAULT_OLLAMA_MODEL})")
                     with gr.Row():
                         resolution = gr.Textbox(
                             value=f"{DEFAULT_WIDTH}x{DEFAULT_HEIGHT}",
@@ -564,8 +698,12 @@ def build_app():
                         info="Fracción de la altura del video; cada uno en "
                              "su esquina inferior (rick derecha, morty "
                              "izquierda)")
-                    text_model = gr.Textbox(value=DEFAULT_TEXT_MODEL,
-                                            label="Modelo de texto")
+                    _choices, _value, _ = _model_choices(_AUTO_PROVIDER,
+                                                         DEFAULT_TEXT_MODEL)
+                    text_model = gr.Dropdown(
+                        _choices, value=_value, allow_custom_value=True,
+                        label="Modelo de texto",
+                        info="Con 'ollama' se listan los modelos instalados")
                     force = gr.Checkbox(
                         label="Forzar regeneración (ignorar caché)")
                     output_dir = gr.Textbox(
@@ -602,6 +740,60 @@ def build_app():
                                        lines=14, interactive=False, scale=6,
                                        buttons=["copy"])
 
+        # ---------------- lote automático (opcional, aparte) ----------------
+        with gr.Accordion("🤖 Lote automático — varios videos de ciencia "
+                          "con Ollama", open=False):
+            gr.Markdown(
+                "Genera varios videos seguidos sin intervenir: elige los "
+                "temas, escribe cada guion con el modelo local de Ollama, "
+                "pone las voces y renderiza. Al final deja en "
+                "`output/_lote/<fecha>/` los videos numerados y "
+                "**publicar.txt** con título, descripción y hashtags para "
+                "pegar. Usa el idioma de arriba.")
+            with gr.Row():
+                lote_count = gr.Slider(1, 10, value=3, step=1,
+                                       label="Cantidad de videos")
+                lote_source = gr.Radio(
+                    [("Banco de datos verificados (recomendado)", "bank"),
+                     ("Propuestos por Ollama (revísalos)", "ollama")],
+                    value="bank", label="Origen de los temas",
+                    info="Los modelos locales chicos suelen inventar cifras; "
+                         "el banco trae datos comprobados que no se repiten "
+                         "entre lotes")
+            with gr.Row():
+                lote_theme = gr.Textbox(
+                    value=DEFAULT_BATCH_THEME, label="Tema general",
+                    info="Con el banco, un área (astronomía, cuerpo "
+                         "humano...) va primero")
+                _lchoices, _lvalue, _ = _model_choices("ollama",
+                                                       DEFAULT_OLLAMA_MODEL)
+                lote_model = gr.Dropdown(
+                    _lchoices, value=_lvalue, allow_custom_value=True,
+                    label="Modelo de Ollama para los guiones")
+                lote_engine = gr.Radio(
+                    _engines,
+                    value=(DEFAULT_TTS_ENGINE
+                           if DEFAULT_TTS_ENGINE in _engines else "edge"),
+                    label="Motor de voz")
+            lote_topics = gr.Textbox(
+                label="Temas (uno por línea; vacío = se eligen solos)",
+                lines=6,
+                placeholder="Pulsa 'Proponer temas' para verlos y editarlos "
+                            "antes de generar")
+            with gr.Row():
+                lote_suggest = gr.Button("🎲 Proponer temas")
+                lote_go = gr.Button("🎬 Generar videos", variant="primary")
+                lote_stop = gr.Button("⏹ Detener tras el video actual")
+            lote_log = gr.Textbox(label="Progreso del lote", lines=10,
+                                  max_lines=16, interactive=False)
+            with gr.Row():
+                lote_publish = gr.Textbox(
+                    label="📣 Títulos y descripciones para pegar "
+                          "(publicar.txt)",
+                    lines=12, interactive=False, buttons=["copy"], scale=7)
+                lote_folder = gr.Textbox(label="Carpeta del lote",
+                                         interactive=False, scale=3)
+
         def _refresh_history():
             return gr.Dropdown(choices=_history_runs())
 
@@ -619,13 +811,140 @@ def build_app():
                         char_scale, text_model, force, output_dir, feedback]
         script_outputs = [draft_state, script_review, log, review_group]
 
+        # same order as approve_and_render's parameters after upload_tiktok
+        render_inputs = [subtitles, watermark, bg_enabled, bg_volume, use_rvc,
+                         tts_engine, rick_voice, rick_rate, rick_pitch,
+                         morty_voice, morty_rate, morty_pitch, resolution,
+                         fps, chroma_similarity, chroma_blend, char_scale]
+
+        def _on_provider(provider, current):
+            choices, value, ok = _model_choices(provider, current)
+            if str(provider).startswith("ollama") and not ok:
+                gr.Warning("Ollama no responde o no tiene modelos: inicia la "
+                           f"app de Ollama o ejecuta `ollama pull "
+                           f"{DEFAULT_OLLAMA_MODEL}`.")
+            return gr.Dropdown(choices=choices, value=value)
+
+        text_provider.change(_on_provider, inputs=[text_provider, text_model],
+                             outputs=text_model)
+
+        # ---------------- lluvia de ideas (modo simple) ----------------
+        def _ideas_round(source, area, model, shown):
+            """A new round of ideas, skipping the ones on screen."""
+            try:
+                choices = _idea_choices(source, area, model, list(shown or []))
+            except Exception as e:
+                raise gr.Error(str(e))
+            return gr.Radio(choices=choices, value=None), [v for _, v in choices]
+
+        def _ideas_fresh(source, area, model):
+            return _ideas_round(source, area, model, [])
+
+        def _open_ideas(source, area, model):
+            radio, shown = _ideas_round(source, area, model, [])
+            return gr.Column(visible=True), radio, shown
+
+        def _use_idea(choice):
+            if not choice:
+                gr.Warning("Elige una idea de la lista primero.")
+                return gr.skip(), gr.skip(), gr.skip()
+            # fill the topic, close the panel, leave demo mode
+            return choice, gr.Column(visible=False), False
+
+        ideas_inputs = [ideas_source, ideas_area, text_model]
+        ideas_btn.click(_open_ideas, inputs=ideas_inputs,
+                        outputs=[ideas_panel, ideas_list, ideas_shown])
+        ideas_more.click(_ideas_round, inputs=[*ideas_inputs, ideas_shown],
+                         outputs=[ideas_list, ideas_shown])
+        ideas_source.change(_ideas_fresh, inputs=ideas_inputs,
+                            outputs=[ideas_list, ideas_shown])
+        ideas_area.select(_ideas_fresh, inputs=ideas_inputs,
+                          outputs=[ideas_list, ideas_shown])
+        ideas_use.click(_use_idea, inputs=ideas_list,
+                        outputs=[topic, ideas_panel, use_demo])
+        ideas_close.click(lambda: gr.Column(visible=False),
+                          outputs=ideas_panel)
         go.click(generate_script, inputs=script_inputs, outputs=script_outputs)
         regen.click(generate_script, inputs=script_inputs, outputs=script_outputs)
         approve.click(approve_and_render,
-                      inputs=[draft_state, upload_tiktok],
+                      inputs=[draft_state, upload_tiktok, *render_inputs],
                       outputs=[log, video, summary, social,
                                eta_bar, ding, tiktok_bar]).then(
             _refresh_history, outputs=hist_runs)
+
+        # ---------------- lote automático ----------------
+        batch_stop = threading.Event()
+
+        def _suggest_batch_topics(count, source, theme, model, language):
+            from .batch import generate_topics
+            try:
+                topics = generate_topics(int(count), source, theme, model,
+                                         str(language).split(" ")[0],
+                                         log=lambda *_: None)
+            except Exception as e:
+                raise gr.Error(str(e))
+            return "\n".join(t.tema for t in topics)
+
+        def _run_batch_ui(count, source, theme, model, engine, topics_text,
+                          language):
+            """Whole batch in a worker thread; its log streams here. Like
+            approve_and_render, a keep-alive yield every second stops the
+            browser (or the Colab tunnel) from dropping a long job."""
+            from .batch import run_batch, topics_from_lines
+
+            topics = topics_from_lines((topics_text or "").splitlines()) or None
+            batch_stop.clear()
+            q: queue.Queue = queue.Queue()
+            holder: dict = {}
+
+            def worker():
+                try:
+                    holder["result"] = run_batch(
+                        count=int(count), theme=theme, model=model,
+                        tts_engine=str(engine),
+                        language=str(language).split(" ")[0],
+                        source=source, topics=topics, log=q.put,
+                        should_stop=batch_stop.is_set)
+                except Exception as e:  # surfaced as gr.Error below
+                    holder["error"] = e
+                finally:
+                    q.put(None)
+
+            threading.Thread(target=worker, daemon=True).start()
+            lines: list[str] = []
+            while True:
+                try:
+                    item = q.get(timeout=1.0)
+                except queue.Empty:
+                    yield gr.skip(), gr.skip(), gr.skip()
+                    continue
+                if item is None:
+                    break
+                lines.append(str(item))
+                del lines[:-400]
+                yield "\n".join(lines), gr.skip(), gr.skip()
+            if "error" in holder:
+                raise gr.Error(str(holder["error"]))
+            result = holder["result"]
+            yield ("\n".join(lines),
+                   result.publish_text or "(ningún video terminado)",
+                   str(result.folder.resolve()))
+
+        def _stop_batch():
+            batch_stop.set()
+            gr.Info("El lote se detendrá al terminar el video actual.")
+
+        lote_suggest.click(
+            _suggest_batch_topics,
+            inputs=[lote_count, lote_source, lote_theme, lote_model, language],
+            outputs=lote_topics)
+        lote_go.click(
+            _run_batch_ui,
+            inputs=[lote_count, lote_source, lote_theme, lote_model,
+                    lote_engine, lote_topics, language],
+            outputs=[lote_log, lote_publish, lote_folder]).then(
+            _refresh_history, outputs=hist_runs)
+        lote_stop.click(_stop_batch)
     return demo
 
 

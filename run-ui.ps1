@@ -3,6 +3,8 @@
 
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
+. "$PSScriptRoot\_python.ps1"
 
-python -m charla.ui
+$py = Resolve-CharlaPython
+& $py -m charla.ui
 exit $LASTEXITCODE

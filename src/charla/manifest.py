@@ -4,13 +4,27 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from .config import PipelineOptions
-from .models import Timeline, VoiceSpec
+from .config import CHATTERBOX_EXAGGERATION, PipelineOptions
+from .models import Timeline, Turn, VoiceSpec
+
+
+def _voice_config(engine: str, turn: Turn, spec: VoiceSpec,
+                  use_rvc: bool) -> dict:
+    """What actually voiced this turn (edge voice names are meaningless
+    for the cloned-voice engines)."""
+    if engine == "chatterbox":
+        return {"engine": "chatterbox",
+                "exaggeration": CHATTERBOX_EXAGGERATION.get(turn.speaker)}
+    if engine == "xtts":
+        return {"engine": "xtts"}
+    return {"engine": "edge-tts", "voice": spec.voice, "rate": spec.rate,
+            "pitch": spec.pitch, "rvc": use_rvc}
 
 
 def write_manifest(options: PipelineOptions, timeline: Timeline,
                    title: str, output_dir: Path, dry_run: bool,
-                   voices: dict[str, VoiceSpec]) -> Path:
+                   voices: dict[str, VoiceSpec], use_rvc: bool = False,
+                   video_encoder: str | None = None) -> Path:
     turns = []
     for t in timeline.turns:
         rel = lambda p: p.relative_to(output_dir).as_posix() if p else None
@@ -20,8 +34,8 @@ def write_manifest(options: PipelineOptions, timeline: Timeline,
             "Speaker": t.speaker,
             "Emotion": t.emotion,
             "Line": t.line,
-            "Voice_Config": {"engine": "edge-tts", "voice": spec.voice,
-                             "rate": spec.rate, "pitch": spec.pitch},
+            "Voice_Config": _voice_config(options.tts_engine, t, spec,
+                                          use_rvc),
             "Timing_Map": {
                 "Turn_Start": t.turn_start,
                 "Audio_Trigger_Delay": t.audio_trigger_delay,
@@ -29,6 +43,7 @@ def write_manifest(options: PipelineOptions, timeline: Timeline,
                 "Estimated": dry_run,
                 "Turn_End_Delay": t.turn_end_delay,
                 "Turn_Duration": t.turn_duration,
+                "Frames": t.frames,
                 "Background_Offset": t.bg_offset,
                 "Character_Offset": t.char_offset,
                 "Character_Pingpong": t.char_pingpong,
@@ -59,6 +74,9 @@ def write_manifest(options: PipelineOptions, timeline: Timeline,
                    "blend": options.chroma_blend},
         "Text_Provider": options.text_provider,
         "Text_Model": options.text_model,
+        "TTS_Engine": options.tts_engine,
+        "RVC": use_rvc,
+        "Video_Encoder": video_encoder,
         "Total_Duration": round(timeline.total_duration, 3),
         "Dry_Run": dry_run,
         "Turns": turns,

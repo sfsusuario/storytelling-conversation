@@ -4,6 +4,7 @@ import asyncio
 import json
 from pathlib import Path
 
+from .config import EDGE_TTS_CONCURRENCY
 from .ffutil import probe_duration
 from .models import Turn, VoiceSpec
 
@@ -53,11 +54,15 @@ def synthesize_turns(turns: list[Turn], voices: dict[str, VoiceSpec],
                      audio_dir: Path, ffprobe: str, log=print) -> None:
     """Generate one audio file per turn (cached) and fill in durations.
 
-    Each turn is voiced with its speaker's VoiceSpec.
+    Each turn is voiced with its speaker's VoiceSpec. Uncached turns are
+    requested concurrently (CHARLA_EDGE_CONCURRENCY at a time): each one is
+    an independent websocket round-trip, so the stage takes about as long
+    as the slowest line instead of the sum of all of them.
     """
     audio_dir.mkdir(parents=True, exist_ok=True)
 
     async def run() -> None:
+        pending: list[tuple[Turn, VoiceSpec, Path, Path, str]] = []
         for turn in turns:
             spec = voices[turn.speaker]
             out = audio_dir / f"{turn.turn_id}.mp3"
@@ -76,14 +81,24 @@ def synthesize_turns(turns: list[Turn], voices: dict[str, VoiceSpec],
                 turn.word_timings = cached_meta.get("words") or None
                 log(f"  tts: {out.name} (cached)")
             else:
+                pending.append((turn, spec, out, meta, stamp))
+            turn.audio_path = out
+
+        sem = asyncio.Semaphore(EDGE_TTS_CONCURRENCY)
+
+        async def synth(turn: Turn, spec: VoiceSpec, out: Path, meta: Path,
+                        stamp: str) -> None:
+            async with sem:
                 words = await _synthesize_one(turn.line, spec.voice, out,
                                               spec.rate, spec.pitch)
-                turn.word_timings = words or None
-                meta.write_text(json.dumps({"stamp": stamp, "words": words},
-                                           ensure_ascii=False),
-                                encoding="utf-8")
-                log(f"  tts: {out.name} ({turn.speaker})")
-            turn.audio_path = out
+            turn.word_timings = words or None
+            meta.write_text(json.dumps({"stamp": stamp, "words": words},
+                                       ensure_ascii=False),
+                            encoding="utf-8")
+            log(f"  tts: {out.name} ({turn.speaker})")
+
+        # first failure propagates; asyncio.run cancels the rest
+        await asyncio.gather(*(synth(*job) for job in pending))
 
     asyncio.run(run())
 

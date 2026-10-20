@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import os
 import random
 from dataclasses import dataclass
@@ -14,17 +15,49 @@ def load_dotenv(path: Path | None = None) -> None:
     p = path or Path(".env")
     if not p.is_file():
         return
-    for line in p.read_text(encoding="utf-8").splitlines():
+    for line in p.read_text(encoding="utf-8-sig").splitlines():
         line = line.strip()
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        key, value = key.strip(), value.strip().strip('"').strip("'")
+        value = value.strip()
+        if value[:1] in ('"', "'"):
+            value = value[1:].split(value[0], 1)[0]   # quoted: keep as-is
+        else:
+            # inline comment: "CHARLA_TTS=edge   # edge | xtts" -> "edge"
+            value = value.split(" #", 1)[0].split("\t#", 1)[0].strip()
+        key = key.strip()
         if key and key not in os.environ:
             os.environ[key] = value
 
 
 load_dotenv()
+
+
+def has_secret(*names: str) -> bool:
+    """True when any of the env vars holds a plausible secret.
+
+    Placeholders copied verbatim from .env.example ("sk-ant-...", "...",
+    "<tu-clave>") or too-short values count as missing, so auto mode never
+    picks a provider whose key is obviously fake.
+    """
+    for name in names:
+        value = os.environ.get(name, "").strip()
+        if (len(value) >= 20 and "..." not in value and "…" not in value
+                and not (value.startswith("<") and value.endswith(">"))):
+            return True
+    return False
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+
+
+def _cpu_count() -> int:
+    return os.cpu_count() or 2
 
 # ---------------------------------------------------------------------------
 # Timing constants (seconds) — the core spec of the video format
@@ -34,6 +67,46 @@ TURN_END_DELAY = 0.4        # silence after the line before the hard cut
 
 DEFAULT_TEXT_MODEL = "claude-opus-5"
 DEFAULT_GEMINI_TEXT_MODEL = "gemini-2.5-flash"
+
+
+def normalize_ollama_host(raw: str | None) -> str:
+    """OLLAMA_HOST as a base URL: adds the scheme and default port, and maps
+    the server-side bind-all addresses (0.0.0.0, ::) to loopback."""
+    value = (raw or "").strip() or "127.0.0.1:11434"
+    scheme = "http"
+    if "://" in value:
+        scheme, value = value.split("://", 1)
+    value = value.rstrip("/")
+    if value.startswith("["):              # [::1]:11434
+        host, _, port = value[1:].partition("]")
+        port = port.lstrip(":")
+    elif value.count(":") > 1:             # bare IPv6, no port
+        host, port = value, ""
+    else:
+        host, _, port = value.partition(":")
+    if host in ("", "0.0.0.0", "::"):
+        host = "127.0.0.1"
+    if ":" in host:
+        host = f"[{host}]"
+    return f"{scheme}://{host}:{port or '11434'}"
+
+
+# Local scriptwriter via Ollama (no API key). gemma3:4b is the default: it
+# is the model verified to return valid structured scripts on an Intel Arc
+# iGPU (qwen3:8b / llama3.1:8b abort with "token repeat limit" on the long
+# prompt there).
+DEFAULT_OLLAMA_MODEL = os.environ.get("CHARLA_OLLAMA_MODEL", "gemma3:4b")
+OLLAMA_HOST = normalize_ollama_host(os.environ.get("OLLAMA_HOST"))
+OLLAMA_NUM_CTX = _env_int("CHARLA_OLLAMA_NUM_CTX", 8192)
+OLLAMA_NUM_PREDICT = _env_int("CHARLA_OLLAMA_NUM_PREDICT", 4096)
+OLLAMA_TIMEOUT = _env_int("CHARLA_OLLAMA_TIMEOUT", 600)
+OLLAMA_KEEP_ALIVE = os.environ.get("CHARLA_OLLAMA_KEEP_ALIVE") or None
+# Automatic batch (charla-lote): general theme the topic generator works on.
+DEFAULT_BATCH_THEME = os.environ.get("CHARLA_BATCH_THEME",
+                                     "ciencia y datos curiosos")
+_think = os.environ.get("CHARLA_OLLAMA_THINK", "").strip().lower()
+OLLAMA_THINK: bool | str | None = (
+    {"true": True, "false": False}.get(_think, _think) if _think else None)
 
 DEFAULT_LANGUAGE = os.environ.get("CHARLA_LANGUAGE", "es")
 DEFAULT_WATERMARK = os.environ.get("CHARLA_WATERMARK", "@sfsusers")
@@ -60,25 +133,66 @@ DEFAULT_CHROMA_BLEND = float(os.environ.get("CHARLA_CHROMA_BLEND", "0.05"))
 
 CHARACTERS_DIR = Path("characters")
 
-# Background videos live in backgrounds/; each run picks one at random.
-# Their own soundtrack is NOT mixed into the final video (bg_volume 0).
+# Shared cross-run cache: ping-pong loops, background proxies, clip probes.
+CACHE_DIR = Path("output") / "_cache"
+
+# Background videos live in backgrounds/; each topic gets one of them
+# (deterministic per topic, so re-runs reuse their cache). Their own
+# soundtrack is only mixed in when bg_volume > 0 (default 0).
 BACKGROUNDS_DIR = Path(os.environ.get("CHARLA_BACKGROUNDS", "backgrounds"))
+# Early layouts kept a single background.mp4 at the repo root.
+_LEGACY_BACKGROUND = Path("background.mp4")
 
 
-def resolve_background(path: Path | None = None) -> Path:
-    """Concrete background video for a run: the given file as-is, or a
-    random pick among every .mp4 inside the given directory (BACKGROUNDS_DIR
-    by default, subfolders included)."""
+def resolve_background(path: Path | None = None,
+                       seed: str | None = None) -> Path:
+    """Concrete background video for a run: the given file as-is, or one of
+    the .mp4 files inside the given directory (BACKGROUNDS_DIR by default,
+    subfolders included).
+
+    With a seed (the run identity) the pick is a stable hash of it, so the
+    same topic always lands on the same background; without one it is
+    random. Falls back to a legacy root background.mp4 when no backgrounds/
+    folder exists.
+    """
     p = Path(path) if path else BACKGROUNDS_DIR
     if p.is_file():
         return p
     if p.is_dir():
-        candidates = sorted(
-            f for f in p.rglob("*.mp4") if f.is_file())
+        # Sorted case-insensitively on posix paths: same order on Windows
+        # and Colab, so a seed picks the same file everywhere.
+        candidates = sorted((f for f in p.rglob("*.mp4") if f.is_file()),
+                            key=lambda f: f.as_posix().lower())
         if candidates:
-            return random.choice(candidates)
+            if seed is None:
+                return random.choice(candidates)
+            digest = hashlib.sha256(seed.encode("utf-8")).hexdigest()
+            return candidates[int(digest, 16) % len(candidates)]
+        if path is None and _LEGACY_BACKGROUND.is_file():
+            return _LEGACY_BACKGROUND
         raise FileNotFoundError(f"No .mp4 backgrounds in {p}/")
-    raise FileNotFoundError(f"Background not found: {p}")
+    if path is None and _LEGACY_BACKGROUND.is_file():
+        return _LEGACY_BACKGROUND
+    raise FileNotFoundError(
+        f"Background not found: {p} (put .mp4 files in {BACKGROUNDS_DIR}/ "
+        "or pass --background)")
+
+# ---------------------------------------------------------------------------
+# Render performance
+# ---------------------------------------------------------------------------
+# Video encoder: auto probes h264_qsv (Intel Quick Sync) -> h264_nvenc
+# (NVIDIA, e.g. Colab T4) -> libx264 and keeps the first that works.
+VIDEO_ENCODER = os.environ.get("CHARLA_VIDEO_ENCODER", "auto").strip().lower()
+X264_PRESET = os.environ.get("CHARLA_X264_PRESET", "veryfast")
+# Turns rendered in parallel (each one its own ffmpeg process).
+_jobs = os.environ.get("CHARLA_RENDER_JOBS", "auto").strip().lower()
+RENDER_JOBS = (max(1, min(3, _cpu_count() // 2)) if _jobs in ("", "auto")
+               else max(1, _env_int("CHARLA_RENDER_JOBS", 1)))
+# One-time transcode of the background to the output size/fps with short
+# GOPs: turns then seek cheaply and skip the per-frame scale.
+BG_PROXY = os.environ.get("CHARLA_BG_PROXY", "1").strip() != "0"
+# Concurrent edge-tts requests for uncached turns.
+EDGE_TTS_CONCURRENCY = max(1, _env_int("CHARLA_EDGE_CONCURRENCY", 4))
 
 # Character overlay size as a fraction of the frame height; each character
 # sits in its own bottom corner (see CharacterSpec.anchor) instead of
@@ -110,6 +224,14 @@ CHATTERBOX_EXAGGERATION = {
     "rick": float(os.environ.get("CHARLA_RICK_EXAGGERATION", "0.7")),
     "morty": float(os.environ.get("CHARLA_MORTY_EXAGGERATION", "0.6")),
 }
+# Torch device for the cloned-voice workers: auto = cuda -> xpu (Intel Arc,
+# only inside an XPU venv) -> cpu.
+TTS_DEVICE = os.environ.get("CHARLA_TTS_DEVICE", "auto").strip().lower()
+# Torch CPU threads: auto = half the logical cores, which on hybrid Intel
+# chips (P + LP E-cores) keeps the work on the fast cores.
+_threads = os.environ.get("CHARLA_TORCH_THREADS", "auto").strip().lower()
+TORCH_THREADS = (max(1, min(8, _cpu_count() // 2)) if _threads in ("", "auto")
+                 else max(1, _env_int("CHARLA_TORCH_THREADS", 4)))
 
 # Caption font. Default: Comic Sans Bold (ships with Windows, comic look,
 # full Spanish glyphs). Alternative in the repo: assets/fonts/get_schwifty.ttf

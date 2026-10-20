@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import dataclasses
 import hashlib
 import re
 import shutil
@@ -8,11 +9,11 @@ from pathlib import Path
 from typing import Callable
 
 from .assets import available_emotions, scan_characters, validate_clips
-from .config import (AUDIO_TRIGGER_DELAY, CHARACTERS, TURN_END_DELAY,
-                     PipelineOptions, resolve_background)
-from .ffutil import probe_duration, require_ffmpeg
+from .config import (AUDIO_TRIGGER_DELAY, BG_PROXY, CHARACTERS,
+                     TURN_END_DELAY, PipelineOptions, resolve_background)
+from .ffutil import MediaInfo, probe_duration, require_ffmpeg
 from .manifest import write_manifest
-from .models import Timeline, Turn, VoiceSpec, build_timeline
+from .models import Turn, VoiceSpec, build_timeline
 
 Progress = Callable[[str], None]
 
@@ -45,7 +46,8 @@ class ScriptDraft:
     def __init__(self, options: PipelineOptions, output_dir: Path,
                  ffmpeg: str | None, ffprobe: str | None,
                  voices: dict[str, VoiceSpec], use_rvc: bool,
-                 turns: list[Turn], script: dict, social: str):
+                 turns: list[Turn], script: dict, social: str,
+                 clip_info: dict[Path, MediaInfo] | None = None):
         self.options = options
         self.output_dir = output_dir
         self.ffmpeg = ffmpeg
@@ -55,6 +57,7 @@ class ScriptDraft:
         self.turns = turns
         self.script = script
         self.social = social
+        self.clip_info = clip_info
 
 
 def _slugify(text: str) -> str:
@@ -88,29 +91,79 @@ def resolve_voices(options: PipelineOptions,
     }
 
 
-def default_output_dir(options: PipelineOptions, emotions: list[str],
-                       voices: dict[str, VoiceSpec],
-                       use_rvc: bool = False) -> Path:
+def run_identity(options: PipelineOptions) -> tuple[str, str]:
+    """(digest, label) of what makes a run's SCRIPT distinct.
+
+    Only inputs that change the (possibly paid) script go in: the topic or
+    script file, language, the requested text provider/model and the turn
+    limits. Render settings, voices and the voice engine stay out on
+    purpose — every per-turn TTS and clip cache stamp already includes
+    them, and each engine writes its own audio files — so tweaking chroma,
+    subtitles or the voice reuses the script and audio instead of paying
+    for a new LLM call. The digest also seeds the background pick.
+    """
     if options.script_file:
-        identity = options.script_file.read_text(encoding="utf-8")
-        label = options.script_file.stem
+        identity = "script-v2|" + Path(options.script_file).read_text(
+            encoding="utf-8")
+        label = Path(options.script_file).stem
     else:
-        identity = options.input_text
+        identity = (f"run-v2|{options.input_text}|{options.language}"
+                    f"|{options.text_provider}|{options.text_model}"
+                    f"|{options.min_turns}-{options.max_turns}")
         label = (options.input_text.split("//", 1)[-1] if options.is_url
                  else options.input_text)
-    h = hashlib.sha256()
-    h.update(identity.encode("utf-8"))
-    h.update("|".join(emotions).encode("utf-8"))
-    for name, spec in sorted(voices.items()):
-        h.update(f"|{name}:{spec.voice}:{spec.rate}:{spec.pitch}".encode())
-    h.update(f"|{options.width}x{options.height}@{options.fps}"
-             f"|{options.language}|{options.watermark}"
-             f"|subs={options.subtitles}"
-             f"|chroma={options.chroma_similarity}:{options.chroma_blend}"
-             f"|charscale={options.char_scale}"
-             f"|rvc={use_rvc}|tts={options.tts_engine}"
-             f"|bg={Path(options.background).name}".encode())
-    return Path("output") / f"{_slugify(label)}-{h.hexdigest()[:8]}"
+    return hashlib.sha256(identity.encode("utf-8")).hexdigest(), label
+
+
+def default_output_dir(options: PipelineOptions) -> Path:
+    digest, label = run_identity(options)
+    return Path("output") / f"{_slugify(label)}-{digest[:8]}"
+
+
+def resolve_voice_engine(options: PipelineOptions
+                         ) -> tuple[dict[str, VoiceSpec], bool]:
+    """(voices, use_rvc) for the selected engine; raises if it is not
+    installed. xtts/chatterbox generate cloned voices directly (no RVC)."""
+    use_rvc = False
+    if options.tts_engine == "xtts":
+        from .xtts import XttsError, xtts_available, xtts_unavailable_reason
+        if not xtts_available():
+            raise XttsError(xtts_unavailable_reason())
+    elif options.tts_engine == "chatterbox":
+        from .chatterbox import (ChatterboxError, chatterbox_available,
+                                 chatterbox_unavailable_reason)
+        if not chatterbox_available():
+            raise ChatterboxError(chatterbox_unavailable_reason())
+    else:
+        from .rvc import RvcError, rvc_available, rvc_unavailable_reason
+        if options.rvc == "on" and not rvc_available():
+            raise RvcError(rvc_unavailable_reason())
+        use_rvc = options.rvc != "off" and rvc_available()
+    return resolve_voices(options, use_rvc), use_rvc
+
+
+# Options that only affect stages 2-4: safe to change after the script was
+# generated (e.g. in the UI between "Generar guion" and "Aprobar").
+RENDER_FIELDS = frozenset({
+    "width", "height", "fps", "watermark", "subtitles", "bg_volume",
+    "char_scale", "chroma_similarity", "chroma_blend", "tts_engine", "rvc",
+    "rick_voice", "rick_rate", "rick_pitch",
+    "morty_voice", "morty_rate", "morty_pitch", "reencode_concat",
+})
+
+
+def with_render_options(draft: ScriptDraft, **changes) -> ScriptDraft:
+    """A NEW draft with updated render/voice options (the original is left
+    untouched, so a UI can merge again on every approve). Language,
+    background and output folder stay as they were at script time."""
+    unknown = set(changes) - RENDER_FIELDS
+    if unknown:
+        raise ValueError("Not a render option: " + ", ".join(sorted(unknown)))
+    options = dataclasses.replace(draft.options, **changes)
+    voices, use_rvc = resolve_voice_engine(options)
+    return ScriptDraft(options, draft.output_dir, draft.ffmpeg, draft.ffprobe,
+                       voices, use_rvc, draft.turns, draft.script,
+                       draft.social, clip_info=draft.clip_info)
 
 
 def _estimate_duration(text: str) -> float:
@@ -146,10 +199,14 @@ def generate_script_stage(options: PipelineOptions,
         raise ValueError("Provide an input text/URL or a --script-file")
     if options.script_file and not options.script_file.is_file():
         raise FileNotFoundError(f"Script file not found: {options.script_file}")
-    # Random pick from backgrounds/ unless an explicit file was given; the
-    # chosen file is pinned in options so stages 2-4, the run hash and the
-    # manifest all see the same background.
-    background = resolve_background(options.background)
+    if options.min_turns > options.max_turns or options.min_turns < 2:
+        raise ValueError(f"Turn limits must satisfy 2 <= min <= max "
+                         f"(got min {options.min_turns}, max {options.max_turns})")
+    # Background: the given file, or a pick from backgrounds/ seeded by the
+    # run identity (same topic -> same background -> caches stay valid).
+    # Pinned in options so stages 2-4 and the manifest see the same file.
+    digest, _ = run_identity(options)
+    background = resolve_background(options.background, seed=digest)
     options.background = background
     log(f"background: {background}")
 
@@ -157,40 +214,23 @@ def generate_script_stage(options: PipelineOptions,
     emotions = available_emotions(chars)
     log(f"emotions available: {', '.join(emotions)}")
 
-    # Resolve the voice engine up front (affects the run hash and the TTS
-    # source settings). xtts/chatterbox generate cloned voices directly
-    # (no RVC pass).
-    use_rvc = False
-    if options.tts_engine == "xtts":
-        from .xtts import XttsError, xtts_available, xtts_unavailable_reason
-        if not xtts_available():
-            raise XttsError(xtts_unavailable_reason())
-    elif options.tts_engine == "chatterbox":
-        from .chatterbox import (ChatterboxError, chatterbox_available,
-                                 chatterbox_unavailable_reason)
-        if not chatterbox_available():
-            raise ChatterboxError(chatterbox_unavailable_reason())
-    else:
-        from .rvc import RvcError, rvc_available, rvc_unavailable_reason
-        if options.rvc == "on" and not rvc_available():
-            raise RvcError(rvc_unavailable_reason())
-        use_rvc = options.rvc != "off" and rvc_available()
-    voices = resolve_voices(options, use_rvc)
+    # Resolve the voice engine up front: fail fast if it is not installed.
+    voices, use_rvc = resolve_voice_engine(options)
 
     output_dir = Path(options.output_dir) if options.output_dir \
-        else default_output_dir(options, emotions, voices, use_rvc)
+        else default_output_dir(options)
     output_dir.mkdir(parents=True, exist_ok=True)
     log(f"output dir: {output_dir}")
     _apply_force(output_dir, options, log)
 
     ffmpeg = ffprobe = None
+    clip_info = None
     if not options.dry_run:
         ffmpeg, ffprobe = require_ffmpeg()
-        validate_clips(ffprobe, chars, log=log)
+        clip_info = validate_clips(ffprobe, chars, log=log)
 
     # Stage 1: dialogue script — manual file, or scraped/free text -> LLM
-    from .script_gen import (generate_script, load_script_file,
-                             resolve_text_backend)
+    from .script_gen import generate_script, load_script_file
     if options.script_file:
         log(f"[1/4] script (manual: {options.script_file})")
         script, social = load_script_file(options.script_file, emotions)
@@ -201,17 +241,27 @@ def generate_script_stage(options: PipelineOptions,
             log(f"[1/4] script (scraping {options.input_text})")
             source_text = fetch_article(options.input_text,
                                         output_dir / "01_script", log=log)
+        else:
+            log(f"[1/4] script (texto: {options.text_provider})")
+            # A headline from the verified fact bank (idea picker, batch, or
+            # typed verbatim) carries supporting details: give them to the
+            # scriptwriter so it explains real facts instead of inventing.
+            from .batch import find_bank_topic
+            bank = find_bank_topic(source_text)
+            if bank and bank.detalles:
+                source_text = bank.prompt
+                log("  script: tema del banco verificado (con sus detalles)")
         if options.script_feedback.strip():
             source_text = (f"{source_text}\n\n[Instrucciones adicionales del "
                            f"usuario para este guion]: {options.script_feedback.strip()}")
-        provider, text_model = resolve_text_backend(options.text_provider,
-                                                    options.text_model)
-        options.text_provider, options.text_model = provider, text_model
-        log(f"[1/4] script ({provider}: {text_model})")
-        script, social = generate_script(
-            source_text, emotions, text_model, output_dir / "01_script",
-            provider=provider, language=options.language,
-            min_turns=options.min_turns, max_turns=options.max_turns, log=log)
+        result = generate_script(
+            source_text, emotions, options.text_model,
+            output_dir / "01_script", provider=options.text_provider,
+            language=options.language, min_turns=options.min_turns,
+            max_turns=options.max_turns, log=log)
+        # the manifest records the backend that actually wrote the script
+        options.text_provider, options.text_model = result.provider, result.model
+        script, social = result.script, result.social
 
     turns = [
         Turn(index=i + 1, turn_id=f"turn_{i + 1:02d}",
@@ -228,7 +278,7 @@ def generate_script_stage(options: PipelineOptions,
         (output_dir / "social.txt").write_text(social, encoding="utf-8")
 
     return ScriptDraft(options, output_dir, ffmpeg, ffprobe, voices, use_rvc,
-                       turns, script, social)
+                       turns, script, social, clip_info=clip_info)
 
 
 def continue_pipeline(draft: ScriptDraft,
@@ -252,13 +302,14 @@ def continue_pipeline(draft: ScriptDraft,
                                   subtitles=options.subtitles)
         manifest_path = write_manifest(options, timeline, draft.script["title"],
                                        output_dir, dry_run=True,
-                                       voices=voices)
+                                       voices=voices, use_rvc=use_rvc)
         log(f"[dry-run] manifest: {manifest_path}")
         return PipelineResult(output_dir, manifest_path, None,
                               draft.script["title"], turns, draft.social)
 
     # Stage 2: voice. Cloned-voice synthesis (xtts / chatterbox) or
     # edge-tts, optionally re-timbred with the Latin dub RVC models.
+    voice_started = time.monotonic()
     if options.tts_engine == "xtts":
         from .xtts import synthesize_turns as synthesize_turns_xtts
         log("[2/4] xtts: voz clonada de los actores del doblaje")
@@ -280,8 +331,22 @@ def continue_pipeline(draft: ScriptDraft,
             log("[2/4] rvc: convirtiendo a voces del doblaje latino (CPU)")
             convert_turns(turns, output_dir / "02_audio", ffprobe, log=log)
 
-    # Stage 3: timeline (frame-rounded cuts, continuous background offsets)
-    bg_duration = probe_duration(ffprobe, background)
+    voice_seconds = time.monotonic() - voice_started
+
+    # Encoder + background picture source (a cached proxy at the output
+    # size/fps when enabled). The ambience mix always reads the original.
+    from .ffutil import detect_video_encoder
+    from .renderer import ensure_background_proxy, render_all
+    render_started = time.monotonic()
+    encoder = detect_video_encoder(ffmpeg)
+    bg_video = background
+    if BG_PROXY:
+        bg_video = ensure_background_proxy(ffmpeg, background, options.width,
+                                           options.height, options.fps,
+                                           encoder, log=log)
+
+    # Stage 3: timeline (frame-exact cuts, continuous background offsets)
+    bg_duration = probe_duration(ffprobe, bg_video)
     timeline = build_timeline(turns, options.width, options.height,
                               options.fps, bg_duration=bg_duration,
                               watermark=options.watermark,
@@ -290,7 +355,6 @@ def continue_pipeline(draft: ScriptDraft,
         f"{len(turns)} turns")
 
     # Stage 4: render (chromakey over the background + concat + ambience)
-    from .renderer import render_all
     log("[4/4] render")
     final_path = render_all(ffmpeg, ffprobe, timeline, background,
                             output_dir / "03_clips",
@@ -298,13 +362,26 @@ def continue_pipeline(draft: ScriptDraft,
                             options.chroma_similarity, options.chroma_blend,
                             reencode=options.reencode_concat,
                             bg_volume=options.bg_volume,
-                            char_scale=options.char_scale, log=log)
+                            char_scale=options.char_scale, log=log,
+                            encoder=encoder, bg_video=bg_video,
+                            clip_info=draft.clip_info)
+    render_seconds = time.monotonic() - render_started
+    # re-detect: render_all may have fallen back from a broken HW encoder
+    encoder = detect_video_encoder(ffmpeg)
 
     manifest_path = write_manifest(options, timeline, draft.script["title"],
-                                   output_dir, dry_run=False, voices=voices)
+                                   output_dir, dry_run=False, voices=voices,
+                                   use_rvc=use_rvc,
+                                   video_encoder=encoder.codec)
+    total_seconds = time.monotonic() - started
     from .timings import engine_key, record_run
     record_run(engine_key(options.tts_engine, use_rvc), len(turns),
-               time.monotonic() - started)
+               total_seconds,
+               stages={"voice": round(voice_seconds, 1),
+                       "render": round(render_seconds, 1)},
+               encoder=encoder.codec)
+    log(f"  tiempos: voz {voice_seconds:.1f}s · render {render_seconds:.1f}s"
+        f" · total {total_seconds:.1f}s")
     log(f"done: {final_path}")
     return PipelineResult(output_dir, manifest_path, final_path,
                           draft.script["title"], turns, draft.social)
