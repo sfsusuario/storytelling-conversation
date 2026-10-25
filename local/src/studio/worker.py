@@ -87,7 +87,8 @@ def run(server_url: str, token: str, local_url: str, stop: threading.Event | Non
     try:
         while not stop.is_set():
             try:
-                r = server.get("/worker/next", params={"wait": wait})
+                # first poll answers at once, so "conectado" shows without waiting the long-poll
+                r = server.get("/worker/next", params={"wait": wait if linked else 0})
             except httpx.HTTPError as exc:
                 log(f"sin conexión con {server_url} ({exc.__class__.__name__}); reintento en {backoff:.0f}s")
                 linked = False
