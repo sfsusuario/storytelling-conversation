@@ -1,6 +1,7 @@
 import { useEffect, useState, type ComponentType } from "react";
 import History, { type Reuse } from "./History";
 import ConversacionApp from "./modalities/conversacion/App";
+import CuentoApp from "./modalities/cuento/App";
 import EscaleraApp from "./modalities/escalera/App";
 
 export type Modality = { id: string; name: string; icon: string; description: string };
@@ -10,6 +11,7 @@ export type Modality = { id: string; name: string; icon: string; description: st
 const SECTIONS: Record<string, { component: ComponentType; className: string }> = {
   conversacion: { component: ConversacionApp, className: "charla" },
   escalera: { component: EscaleraApp, className: "escalera" },
+  cuento: { component: CuentoApp, className: "cuento" },
 };
 
 const HISTORY = "historial";

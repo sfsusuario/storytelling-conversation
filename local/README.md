@@ -11,6 +11,7 @@ Estudio de videos verticales (9:16) para TikTok/Reels/Shorts con varias
 |---|---|---|
 | 🎭 Conversación | `src/charla` | Rick y Morty conversan sobre un tema o una noticia (este README) |
 | 🪜 Escalera | `src/escalator` | Tu retrato sube 5 niveles de personajes con una frase (antes repo `storytelling`) |
+| 📖 Cuento | `src/cuento` | Un cuento ilustrado en 4–8 escenas, con personajes inventados (SDXL) o tu foto (FLUX Kontext), narrado y con efecto 3D |
 
 ```powershell
 .\run-ui.ps1       # http://127.0.0.1:7880   (o: studio)
@@ -147,7 +148,8 @@ navegador ──► studio (src/studio, :7880, un solo proceso FastAPI)
                ├─ /api/thumb/<id>/<run>   miniatura (frame del video, en caché)
                ├─ /m/conversacion/api/*   app FastAPI de charla    (src/charla/web.py)
                ├─ /m/escalera/api/*       app FastAPI de escalator (src/escalator/web.py)
-               ├─ /media/*                archivos de output/ (Conversación)
+               ├─ /m/cuento/api/*         app FastAPI del cuento   (src/cuento/web.py)
+               ├─ /media/*                archivos de output/ (Conversación; también output/cuento/ → /media/cuento/*)
                └─ /files/*                archivos de output/escalera/ (Escalera)
 ```
 
@@ -155,16 +157,21 @@ navegador ──► studio (src/studio, :7880, un solo proceso FastAPI)
   `/m/<id>/` dentro del estudio, sin proxy ni procesos extra. Todas leen el
   mismo `.env` (prefijos `CHARLA_*` y `ESCALATE_*`) y escriben en `output/`.
   Escalera usa su subcarpeta `output/escalera/`, que se cambia con
-  `ESCALATE_OUTPUT`.
+  `ESCALATE_OUTPUT`; Cuento escribe en `output/cuento/` (fija: la montura
+  `/media` del estudio es la que sirve sus archivos).
+- **Trabajos en segundo plano.** `src/studio/runs.py` (eventos SSE con
+  `Last-Event-ID`, rerolls en cola, reintentar, cancelar) lo comparten Escalera
+  y Cuento: cada una le pasa su pipeline, su registro y su prefijo de URL.
 - **Interfaz.** `../server/frontend/src/modalities/<id>/` contiene la UI de cada modalidad,
   y `../server/frontend/src/App.tsx` las monta como pestañas.
-  - Escalera usa Tailwind; Conversación y el estudio usan CSS propio,
-    acotado bajo `.charla` y `.shell`/`.h-`, así que no se pisan.
+  - Escalera y Cuento usan Tailwind (Cuento reutiliza las vistas de progreso y
+    resultado de Escalera con sus propias etiquetas); Conversación y el estudio
+    usan CSS propio, acotado bajo `.charla` y `.shell`/`.h-`, así que no se pisan.
 - **Historial compartido.** `src/studio/history.py` lee `manifest.json`
-  (Conversación) y `pipeline.json` (Escalera). Desde cada video se puede ver,
-  copiar el texto, descargar, 🗑 borrar y ♻ hacer **otra versión**:
+  (Conversación) y `pipeline.json` (Escalera y Cuento). Desde cada video se puede ver,
+  copiar el texto, descargar, 📤 compartir (móvil), 🗑 borrar y ♻ hacer **otra versión**:
   - en Conversación abre su formulario con el mismo tema;
-  - en Escalera usa su propio regenerate.
+  - en Escalera y Cuento usa su propio regenerate (misma foto y entrada, todo nuevo desde el texto).
 - **Una modalidad nueva:**
   1. Paquete en `src/<paquete>/` con `web.py:create_app()`; sus archivos se
      sirven en una ruta propia.
@@ -183,8 +190,27 @@ navegador ──► studio (src/studio, :7880, un solo proceso FastAPI)
   - Movimiento "Cara viva" de Escalera: `.\setup-liveportrait.ps1`.
   - Línea de comandos de Escalera: `escalate <foto> "<frase>"`; su Gradio:
     `escalate-ui`.
-- **Pruebas:** `.venv\Scripts\python -m pytest tests` (charla, escalator y
-  estudio) y `cd ../server/frontend; npm test`.
+- **Pruebas:** `.venv\Scripts\python -m pytest tests` (charla, escalator,
+  cuento y estudio) y `cd ../server/frontend; npm test`.
+
+## Cuento ilustrado
+
+Escribe de qué va el cuento, elige el tono (**infantil con moraleja** o
+**historia corta para todos**: misterio, terror, humor, ciencia ficción), el
+género, el estilo visual y 4–8 escenas. El LLM (Ollama → Claude → Gemini)
+escribe título, protagonista, narración y prompt de imagen por escena; cada
+escena se ilustra, se narra (voz de Escalera: kokoro local por defecto) y se
+mueve con el efecto 3D; el video sale en `output/cuento/<cuento>/final.mp4`.
+
+- **Sin foto:** personajes inventados con SDXL en la GPU Intel (~1 min por
+  escena). El protagonista se describe una vez y se repite en cada prompt para
+  mantenerlo parecido entre escenas.
+- **Con foto:** tú eres el protagonista, con el FLUX Kontext de Escalera
+  (~12 min por escena).
+- **Modo prueba:** imágenes de relleno para comprobar el cuento y la voz en
+  un minuto.
+- Una escena sin figura clara se queda fija en vez de abortar; los subtítulos
+  conservan los nombres propios; no lleva insignia de nivel.
 
 ## Lote automático (varios videos de ciencia con Ollama)
 

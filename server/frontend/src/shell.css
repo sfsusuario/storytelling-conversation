@@ -17,8 +17,8 @@ body { background: #0b0d11; }
 .shell-main { flex: 1; position: relative; min-height: 0; }
 .shell-pane { position: absolute; inset: 0; overflow: auto; }
 .shell-pane[hidden] { display: none; }
-.shell-pane.escalera { background: #fafaf9; color: #1c1917; }
-@media (prefers-color-scheme: dark) { .shell-pane.escalera { background: #0c0a09; color: #e7e5e4; } }
+.shell-pane.escalera, .shell-pane.cuento { background: #fafaf9; color: #1c1917; }
+@media (prefers-color-scheme: dark) { .shell-pane.escalera, .shell-pane.cuento { background: #0c0a09; color: #e7e5e4; } }
 
 /* shared history */
 .h-wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }

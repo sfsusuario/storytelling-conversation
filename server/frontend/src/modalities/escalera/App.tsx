@@ -242,7 +242,7 @@ export default function App() {
               />
               <div className="flex flex-col gap-5">
                 <EssentialFields opts={opts} setOpt={setOpt} app={app} />
-                <MotionPicker opts={opts} setOpt={setOpt} system={system} />
+                <MotionPicker value={opts.motion} onChange={(v) => setOpt("motion", v)} system={system} />
                 <Toggle
                   checked={opts.test_mode}
                   onChange={(v) => setOpt("test_mode", v)}

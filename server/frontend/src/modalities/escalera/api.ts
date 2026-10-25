@@ -1,7 +1,7 @@
 import type { AppOptions, HistoryRun, Options, RunEvent, SystemStatus } from "./types";
 import { apiUrl } from "../../remote";
 
-async function json<T>(res: Response): Promise<T> {
+export async function json<T>(res: Response): Promise<T> {
   if (!res.ok) {
     let detail = res.statusText;
     try {
@@ -58,8 +58,8 @@ export const api = {
  * Follow a run's SSE stream. EventSource reconnects by itself and sends
  * Last-Event-ID, so the backend resumes where the stream broke.
  */
-export function followRun(runId: string, onEvent: (e: RunEvent) => void, onLost: () => void): () => void {
-  const source = new EventSource(`/m/escalera/api/runs/${runId}/events`);
+export function followRun(runId: string, onEvent: (e: RunEvent) => void, onLost: () => void, base = "/m/escalera"): () => void {
+  const source = new EventSource(`${base}/api/runs/${runId}/events`);
   source.onmessage = (msg) => {
     const event = JSON.parse(msg.data) as RunEvent;
     onEvent(event);

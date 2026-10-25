@@ -4,6 +4,31 @@ import { STAGES, STAGE_LABELS } from "../types";
 import { formatSeconds } from "./ui";
 import { apiUrl } from "../../../remote";
 
+/** What a scene is called and laid out: Escalera (levels + personas) by
+ * default; a sibling modality (Cuento) passes its own. */
+export interface SceneLabels {
+  badge: (sc: SceneState) => string;
+  title: (sc: SceneState) => string;
+  canRerollImage: (sc: SceneState) => boolean;
+  /** "Foto original" tab source for a scene; null hides the tab */
+  original: (state: RunState, sc: SceneState) => string | null;
+  setLabel: (styleSet: string) => string;
+  gridProgress: string;
+  gridResult: string;
+  download: string;
+}
+
+export const ESCALERA_LABELS: SceneLabels = {
+  badge: (sc) => `N${sc.level}`,
+  title: (sc) => `N${sc.level} · ${sc.persona}`,
+  canRerollImage: (sc) => sc.level > 1,
+  original: (state, sc) => (sc.level > 1 ? (state.scenes[0]?.image ?? null) : null),
+  setLabel: (s) => `set ${s}`,
+  gridProgress: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5",
+  gridResult: "grid grid-cols-3 gap-2 sm:grid-cols-5",
+  download: "escalator.mp4",
+};
+
 /** Seconds since run start, ticking locally between server events. */
 function useRunClock(state: RunState): number {
   const anchor = useRef({ ts: state.now, wall: Date.now() });
@@ -83,7 +108,17 @@ type View = "image" | "video" | "original";
 type Reroll = (sceneId: string, kind: "image" | "motion") => void;
 
 /** Discreet per-scene "another variation" buttons for a card footer. */
-export function RerollButtons({ scene, onReroll, queued = [] }: { scene: SceneState; onReroll: Reroll; queued?: string[] }) {
+export function RerollButtons({
+  scene,
+  onReroll,
+  queued = [],
+  labels = ESCALERA_LABELS,
+}: {
+  scene: SceneState;
+  onReroll: Reroll;
+  queued?: string[];
+  labels?: SceneLabels;
+}) {
   const btn = "rounded px-1.5 py-0.5 text-[11px] text-stone-500 hover:bg-stone-100 hover:text-orange-600 dark:hover:bg-stone-800";
   const item = (kind: "image" | "motion", label: string, title: string) =>
     queued.includes(`${scene.scene_id}:${kind}`) ? (
@@ -97,7 +132,7 @@ export function RerollButtons({ scene, onReroll, queued = [] }: { scene: SceneSt
     );
   return (
     <div className="flex flex-wrap justify-center gap-1">
-      {scene.level > 1 && scene.image && item("image", "imagen", "Otra imagen para esta escena")}
+      {labels.canRerollImage(scene) && scene.image && item("image", "imagen", "Otra imagen para esta escena")}
       {scene.motion && item("motion", "movimiento", "Otro movimiento para esta escena")}
     </div>
   );
@@ -110,11 +145,13 @@ export function SceneViewer({
   original,
   onClose,
   onReroll,
+  labels = ESCALERA_LABELS,
 }: {
   scene: SceneState;
   original: string | null;
   onClose: () => void;
   onReroll?: (sceneId: string, kind: "image" | "motion") => void;
+  labels?: SceneLabels;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const video = scene.clip ?? scene.motion;
@@ -125,14 +162,14 @@ export function SceneViewer({
   const tabs: [View, string, string | null | undefined][] = [
     ["image", "Imagen", scene.image],
     ["video", scene.clip ? "Vídeo" : "Movimiento", video],
-    ["original", "Foto original", scene.level > 1 ? original : null],
+    ["original", "Foto original", original],
   ];
   return (
     <dialog
       ref={ref}
       onClose={onClose}
       onClick={(e) => e.target === ref.current && ref.current?.close()}
-      aria-label={`Escena nivel ${scene.level}: ${scene.persona}`}
+      aria-label={`Escena ${labels.title(scene)}`}
       className="max-h-[95vh] max-w-[95vw] rounded-xl bg-stone-950 p-3 text-white backdrop:bg-black/80"
     >
       <div className="mb-2 flex items-center justify-between gap-3">
@@ -162,12 +199,10 @@ export function SceneViewer({
         <img src={apiUrl(view === "original" ? original : scene.image)} alt="" className="max-h-[85vh] max-w-full rounded-lg object-contain" />
       )}
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-stone-300">
-          N{scene.level} · {scene.persona}
-        </p>
+        <p className="text-sm text-stone-300">{labels.title(scene)}</p>
         {onReroll && (
           <div className="flex gap-2">
-            {scene.level > 1 && (
+            {labels.canRerollImage(scene) && (
               <button type="button" className="rounded-lg bg-white/15 px-3 py-1 text-sm hover:bg-white/25" onClick={() => onReroll(scene.scene_id, "image")}>
                 🎲 Otra imagen
               </button>
@@ -185,7 +220,21 @@ export function SceneViewer({
   );
 }
 
-function SceneCard({ scene, now, onOpen, onReroll, queued }: { scene: SceneState; now: number; onOpen: () => void; onReroll?: Reroll; queued: string[] }) {
+function SceneCard({
+  scene,
+  now,
+  onOpen,
+  onReroll,
+  queued,
+  labels,
+}: {
+  scene: SceneState;
+  now: number;
+  onOpen: () => void;
+  onReroll?: Reroll;
+  queued: string[];
+  labels: SceneLabels;
+}) {
   const step = scene.clip ? "clip" : scene.motion ? "motion" : scene.audio ? "audio" : scene.image ? "image" : scene.text ? "text" : "waiting";
   const label = { waiting: "En espera", text: "Texto listo", image: "Imagen lista", audio: "Voz lista", motion: "Movimiento listo", clip: "Clip listo" }[step];
   const cached = scene.cached.image || scene.cached.audio;
@@ -193,7 +242,7 @@ function SceneCard({ scene, now, onOpen, onReroll, queued }: { scene: SceneState
     <article className="overflow-hidden rounded-xl border border-stone-200 bg-white dark:border-stone-800 dark:bg-stone-900">
       <div className="relative aspect-[9/16] bg-stone-100 dark:bg-stone-800">
         {scene.image ? (
-          <button type="button" onClick={onOpen} className="group h-full w-full" aria-label={`Ver escena nivel ${scene.level}: ${scene.persona}`}>
+          <button type="button" onClick={onOpen} className="group h-full w-full" aria-label={`Ver escena ${labels.title(scene)}`}>
             <img src={apiUrl(scene.image)} alt="" className="h-full w-full object-cover transition group-hover:brightness-110" loading="lazy" />
             {(scene.clip || scene.motion) && (
               <span className="absolute inset-0 m-auto flex h-12 w-12 items-center justify-center rounded-full bg-black/55 text-xl text-white opacity-80 group-hover:opacity-100" aria-hidden>
@@ -206,7 +255,7 @@ function SceneCard({ scene, now, onOpen, onReroll, queued }: { scene: SceneState
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-stone-300 border-t-orange-500" aria-hidden />
           </div>
         )}
-        <span className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-xs font-bold text-white">N{scene.level}</span>
+        <span className="absolute left-2 top-2 rounded-md bg-black/60 px-2 py-0.5 text-xs font-bold text-white">{labels.badge(scene)}</span>
         {cached && <span className="absolute right-2 top-2 rounded-md bg-sky-600/90 px-2 py-0.5 text-xs text-white">caché</span>}
         {scene.work && <WorkBar work={scene.work} now={now} />}
       </div>
@@ -219,7 +268,7 @@ function SceneCard({ scene, now, onOpen, onReroll, queued }: { scene: SceneState
           {scene.text ? `“${scene.text}”` : "…"}
         </p>
         {scene.audio && <audio controls preload="none" src={apiUrl(scene.audio)} className="h-8 w-full" aria-label={`Voz de ${scene.persona}`} />}
-        {onReroll && <RerollButtons scene={scene} onReroll={onReroll} queued={queued} />}
+        {onReroll && <RerollButtons scene={scene} onReroll={onReroll} queued={queued} labels={labels} />}
       </div>
     </article>
   );
@@ -230,11 +279,13 @@ export function ProgressView({
   averages,
   onCancel,
   onReroll,
+  labels = ESCALERA_LABELS,
 }: {
   state: RunState;
   averages: Record<string, number>;
   onCancel: () => void;
   onReroll?: (sceneId: string, kind: "image" | "motion") => void;
+  labels?: SceneLabels;
 }) {
   const now = useRunClock(state);
   const [showLog, setShowLog] = useState(false);
@@ -259,7 +310,7 @@ export function ProgressView({
             <p className="text-sm text-stone-500" aria-live="polite">
               {state.stage ? `${STAGE_LABELS[state.stage]} (${doneStages + 1}/${STAGES.length})` : "Preparando…"} · {formatSeconds(now)} transcurridos
               {eta !== null && ` · quedan ~${formatSeconds(eta)}`}
-              {state.styleSet && ` · set ${state.styleSet}`}
+              {state.styleSet && ` · ${labels.setLabel(state.styleSet)}`}
             </p>
           </div>
           {state.status === "running" && (
@@ -283,11 +334,11 @@ export function ProgressView({
         )}
       </div>
 
-      {opened && <SceneViewer scene={opened} original={state.scenes[0]?.image ?? null} onClose={() => setOpen(null)} onReroll={onReroll} />}
+      {opened && <SceneViewer scene={opened} original={labels.original(state, opened)} onClose={() => setOpen(null)} onReroll={onReroll} labels={labels} />}
       {state.scenes.length > 0 && (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+        <div className={labels.gridProgress}>
           {state.scenes.map((sc) => (
-            <SceneCard key={sc.scene_id} scene={sc} now={now} onOpen={() => setOpen(sc.scene_id)} onReroll={onReroll} queued={state.queued} />
+            <SceneCard key={sc.scene_id} scene={sc} now={now} onOpen={() => setOpen(sc.scene_id)} onReroll={onReroll} queued={state.queued} labels={labels} />
           ))}
         </div>
       )}

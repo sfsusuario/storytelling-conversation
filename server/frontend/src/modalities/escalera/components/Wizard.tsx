@@ -38,7 +38,24 @@ export function Section({ title, summary, children }: { title: string; summary: 
   );
 }
 
-export function PhotoPicker({ fit, upload, onUpload }: { fit: string; upload: Upload | null; onUpload: (u: Upload) => void }) {
+export function PhotoPicker({
+  fit,
+  upload,
+  onUpload,
+  uploadFn = api.upload,
+  onClear,
+  label = "Retrato: arrastra una foto o haz clic para elegirla",
+  empty = "📷 Arrastra tu foto aquí o haz clic",
+}: {
+  fit: string;
+  upload: Upload | null;
+  onUpload: (u: Upload) => void;
+  uploadFn?: (file: File) => Promise<{ upload_id: string; url: string }>;
+  /** optional photo: renders a "Quitar foto" button */
+  onClear?: () => void;
+  label?: string;
+  empty?: string;
+}) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [drag, setDrag] = useState(false);
@@ -48,7 +65,7 @@ export function PhotoPicker({ fit, upload, onUpload }: { fit: string; upload: Up
     setBusy(true);
     setError(null);
     try {
-      const res = await api.upload(file);
+      const res = await uploadFn(file);
       onUpload({ id: res.upload_id, url: res.url });
     } catch (e) {
       setError((e as Error).message);
@@ -71,7 +88,7 @@ export function PhotoPicker({ fit, upload, onUpload }: { fit: string; upload: Up
         }}
         onDragLeave={() => setDrag(false)}
         onDrop={onDrop}
-        aria-label="Retrato: arrastra una foto o haz clic para elegirla"
+        aria-label={label}
         className={`relative mx-auto flex aspect-[9/16] max-h-[420px] w-full max-w-[236px] cursor-pointer items-center justify-center overflow-hidden rounded-2xl border-2 border-dashed transition ${
           drag ? "border-orange-500 bg-orange-50 dark:bg-orange-950/30" : "border-stone-300 dark:border-stone-700"
         }`}
@@ -80,12 +97,19 @@ export function PhotoPicker({ fit, upload, onUpload }: { fit: string; upload: Up
           <img src={apiUrl(upload.url)} alt="Retrato subido" className={`h-full w-full ${fit === "crop" ? "object-cover" : "object-contain"}`} />
         ) : (
           <span className="px-4 text-center text-sm text-stone-500">
-            {busy ? "Subiendo…" : "📷 Arrastra tu foto aquí o haz clic"}
+            {busy ? "Subiendo…" : empty}
           </span>
         )}
         <input type="file" accept="image/png,image/jpeg,image/webp" className="sr-only" onChange={(e) => send(e.target.files?.[0])} />
         {upload && <span className="absolute bottom-2 left-2 rounded-md bg-black/60 px-2 py-0.5 text-xs text-white">Cambiar foto</span>}
       </label>
+      {upload && onClear && (
+        <div className="mt-2 text-center">
+          <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={onClear}>
+            ✕ Quitar foto
+          </button>
+        </div>
+      )}
       {error && (
         <p role="alert" className="mt-2 text-center text-sm text-red-600">
           {error}
@@ -146,26 +170,36 @@ export const MOTION_CHOICES = [
   { value: "liveportrait", label: "Cara viva", hint: "Anima la cara (LivePortrait) · ~7 min por escena en CPU" },
 ];
 
-export function MotionPicker({ opts, setOpt, system }: Pick<PanelProps, "opts" | "setOpt" | "system">) {
+export function MotionPicker({
+  value,
+  onChange,
+  system,
+  choices = MOTION_CHOICES,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  system: SystemStatus | null;
+  choices?: typeof MOTION_CHOICES;
+}) {
   const ready: Record<string, boolean | null> = {
     none: true,
     rotate3d: true,
     liveportrait: system ? system.liveportrait : null,
   };
-  const current = MOTION_CHOICES.find((m) => m.value === opts.motion) ?? MOTION_CHOICES[0];
+  const current = choices.find((m) => m.value === value) ?? choices[0];
   return (
     <fieldset>
       <legend className="label">Movimiento</legend>
-      <div className="grid grid-cols-3 gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-800" role="radiogroup">
-        {MOTION_CHOICES.map((m) => (
+      <div className={`grid ${choices.length === 2 ? "grid-cols-2" : "grid-cols-3"} gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-800`} role="radiogroup">
+        {choices.map((m) => (
           <button
             key={m.value}
             type="button"
             role="radio"
-            aria-checked={opts.motion === m.value}
-            onClick={() => setOpt("motion", m.value)}
+            aria-checked={value === m.value}
+            onClick={() => onChange(m.value)}
             className={`truncate rounded-md px-2 py-1.5 text-xs font-medium transition ${
-              opts.motion === m.value ? "bg-white shadow dark:bg-stone-950" : "text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
+              value === m.value ? "bg-white shadow dark:bg-stone-950" : "text-stone-500 hover:text-stone-900 dark:hover:text-stone-100"
             }`}
           >
             {m.label}

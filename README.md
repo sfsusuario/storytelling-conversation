@@ -1,7 +1,13 @@
 # Storytelling Studio
 
-Videos verticales (Conversación, Escalera) generados en tu PC y manejables desde
-el teléfono en **storytelling.fierro.dev**, para compartirlos directo a TikTok.
+Videos verticales generados en tu PC y manejables desde el teléfono en
+**storytelling.fierro.dev**, para compartirlos directo a TikTok. Tres modalidades:
+
+- **🎭 Conversación**: Rick y Morty conversan sobre un tema o noticia.
+- **🪜 Escalera**: tu retrato sube 5 niveles de personajes con una frase.
+- **📖 Cuento**: un cuento ilustrado en 4–8 escenas (infantil con moraleja o
+  historia corta para todos), con personajes inventados o con tu foto de
+  protagonista, narrado y con efecto 3D.
 
 ```
 local/              tu PC: estudio (pipelines, GPU, Ollama, TTS) + worker
