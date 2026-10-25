@@ -104,8 +104,9 @@ def create_app(password: str | None = None, worker_token: str | None = None,
         raise RuntimeError("Configura STUDIO_PASSWORD (8+ caracteres) y WORKER_TOKEN (24+) en .env")
     secret = (os.environ.get("SECRET_KEY") or worker_token).encode()
     secure = os.environ.get("COOKIE_SECURE", "1") != "0"
-    origins = [o.strip() for o in os.environ.get(
-        "WEB_ORIGINS", "https://storyteller.fierro.dev,https://storytelling.fierro.dev").split(",") if o.strip()]
+    # the production web is always allowed; WEB_ORIGINS adds others (local tests)
+    origins = ["https://storyteller.fierro.dev", "https://storytelling.fierro.dev"] + [
+        o.strip().rstrip("/") for o in os.environ.get("WEB_ORIGINS", "").split(",") if o.strip()]
     cache = Cache(cache_dir or Path(os.environ.get("CACHE_DIR", "cache")))
     hub = Hub(offline_after)
 
