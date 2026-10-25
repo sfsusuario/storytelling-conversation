@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 
 // `npm run dev` talks to a running `charla-web` backend on :7870.
 export default defineConfig({
+  base: "./", // relative assets: also served under /m/<id>/ by storytelling-studio
   plugins: [react()],
   server: {
     proxy: {

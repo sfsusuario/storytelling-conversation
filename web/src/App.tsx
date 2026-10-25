@@ -10,7 +10,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    getJSON<Defaults>("/api/defaults").then(setDefaults).catch((e: Error) => setError(e.message));
+    getJSON<Defaults>("api/defaults").then(setDefaults).catch((e: Error) => setError(e.message));
   }, []);
 
   return (

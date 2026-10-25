@@ -35,7 +35,7 @@ export default function BatchFlow({ defaults }: { defaults: Defaults }) {
     setError(null);
     try {
       const q = new URLSearchParams({ count: String(count), source, theme, model });
-      const list = await getJSON<string[]>(`/api/topics?${q}`);
+      const list = await getJSON<string[]>(`api/topics?${q}`);
       setTopics(list.join("\n"));
     } catch (e) {
       setError((e as Error).message);
@@ -48,7 +48,7 @@ export default function BatchFlow({ defaults }: { defaults: Defaults }) {
     setError(null);
     setStopping(false);
     try {
-      const { job } = await postJSON<{ job: string }>("/api/batch", {
+      const { job } = await postJSON<{ job: string }>("api/batch", {
         count,
         source,
         theme,
@@ -66,7 +66,7 @@ export default function BatchFlow({ defaults }: { defaults: Defaults }) {
   const stop = async () => {
     if (!jobId) return;
     setStopping(true);
-    await postJSON(`/api/batch/${jobId}/stop`).catch(() => undefined);
+    await postJSON(`api/batch/${jobId}/stop`).catch(() => undefined);
   };
 
   // one card per video, from the batch's events
