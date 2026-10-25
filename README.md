@@ -1,4 +1,21 @@
-# Charla — conversaciones en video
+# Storytelling Studio
+
+Estudio de videos verticales (9:16) para TikTok/Reels/Shorts con varias
+**modalidades** en una sola web, con historial compartido:
+
+| Modalidad | Paquete | Qué hace |
+|---|---|---|
+| 🎭 Conversación | `src/charla` | Rick y Morty conversan sobre un tema o una noticia (este README) |
+| 🪜 Escalera | `src/escalator` | Tu retrato sube 5 niveles de personajes con una frase (antes repo `storytelling`) |
+
+```powershell
+.\run-ui.ps1       # http://127.0.0.1:7880   (o: studio)
+```
+
+Ver [Estudio y modalidades](#estudio-y-modalidades) para la arquitectura y cómo
+agregar una modalidad nueva.
+
+## Conversación (charla)
 
 Generador de videos verticales (9:16) para TikTok/Reels/Shorts: a partir de un
 **tema libre** o una **URL de noticia**, dos personajes mantienen una
@@ -91,10 +108,10 @@ Flags útiles: `--language`, `--max-turns` / `--min-turns`,
 ## Interfaz web (recomendada)
 
 ```powershell
-.\run-ui.ps1       # abre http://127.0.0.1:7870  (o: run-web.ps1 / charla-web)
+.\run-ui.ps1       # abre http://127.0.0.1:7880  (o: run-web.ps1 / studio)
 ```
 
-Interfaz React + TypeScript con dos pestañas:
+En la pestaña 🎭 Conversación del estudio hay dos secciones:
 
 - **Crear video.** Muestra el flujo por pasos (Tema → Guion → Voz → Video →
   Listo).
@@ -114,7 +131,56 @@ ajustes, el historial y la subida a TikTok.
 
 La primera vez, `run-web.ps1` compila la interfaz con Node.js: `npm install`
 y `npm run build` en `web/`. Para desarrollar con recarga en caliente:
-`charla-web` en una terminal y `cd web; npm run dev` en otra.
+`studio` en una terminal y `cd web; npm run dev` en otra.
+
+## Estudio y modalidades
+
+```
+navegador ──► studio (src/studio, :7880, un solo proceso FastAPI)
+               ├─ /                       interfaz React única (web/): pestañas + historial
+               ├─ /api/modalities         modalidades registradas
+               ├─ /api/history            historial compartido (todas las modalidades)
+               ├─ /api/thumb/<id>/<run>   miniatura (frame del video, en caché)
+               ├─ /m/conversacion/api/*   app FastAPI de charla    (src/charla/web.py)
+               ├─ /m/escalera/api/*       app FastAPI de escalator (src/escalator/web.py)
+               ├─ /media/*                archivos de output/ (Conversación)
+               └─ /files/*                archivos de output/escalera/ (Escalera)
+```
+
+- **Backend.** Cada modalidad conserva su app FastAPI tal cual: se monta en
+  `/m/<id>/` dentro del estudio, sin proxy ni procesos extra. Todas leen el
+  mismo `.env` (prefijos `CHARLA_*` y `ESCALATE_*`) y escriben en `output/`.
+  Escalera usa su subcarpeta `output/escalera/`, que se cambia con
+  `ESCALATE_OUTPUT`.
+- **Interfaz.** `web/src/modalities/<id>/` contiene la UI de cada modalidad,
+  y `web/src/App.tsx` las monta como pestañas.
+  - Escalera usa Tailwind; Conversación y el estudio usan CSS propio,
+    acotado bajo `.charla` y `.shell`/`.h-`, así que no se pisan.
+- **Historial compartido.** `src/studio/history.py` lee `manifest.json`
+  (Conversación) y `pipeline.json` (Escalera). Desde cada video se puede ver,
+  copiar el texto, descargar, 🗑 borrar y ♻ hacer **otra versión**:
+  - en Conversación abre su formulario con el mismo tema;
+  - en Escalera usa su propio regenerate.
+- **Una modalidad nueva:**
+  1. Paquete en `src/<paquete>/` con `web.py:create_app()`; sus archivos se
+     sirven en una ruta propia.
+  2. Una entrada `Modality(...)` en `src/studio/modalities.py` y un lector de
+     historial en `history.py`.
+  3. Su UI en `web/src/modalities/<id>/`, llamando a `/m/<id>/api/...`, y
+     una entrada en `SECTIONS` de `web/src/App.tsx`.
+- **Entorno.**
+  - `.venv` del proyecto con torch XPU, kokoro y diffusers para los motores
+    locales de Escalera:
+    ```powershell
+    py -3.12 -m venv .venv
+    .venv\Scripts\pip install torch torchvision --index-url https://download.pytorch.org/whl/xpu
+    .venv\Scripts\pip install -e ".[ui,tts-local,image-local,dev]"
+    ```
+  - Movimiento "Cara viva" de Escalera: `.\setup-liveportrait.ps1`.
+  - Línea de comandos de Escalera: `escalate <foto> "<frase>"`; su Gradio:
+    `escalate-ui`.
+- **Pruebas:** `.venv\Scripts\python -m pytest tests` (charla, escalator y
+  estudio) y `cd web; npm test`.
 
 ## Lote automático (varios videos de ciencia con Ollama)
 

@@ -14,3 +14,4 @@ charla_code.zip
 web/node_modules/
 web/dist/
 *.mp4
+.venv/

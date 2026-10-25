@@ -1,4 +1,4 @@
-# run-ui.ps1 - lanza la interfaz web de Charla (React, http://127.0.0.1:7870).
+# run-ui.ps1 - lanza Storytelling Studio (web con todas las modalidades, http://127.0.0.1:7880).
 # Modo avanzado (Gradio): .\run-gradio.ps1
 # Uso:  .\run-ui.ps1            (-Rebuild fuerza recompilar la interfaz)
 param([switch]$Rebuild)

@@ -1,14 +1,9 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
-// `npm run dev` talks to a running `charla-web` backend on :7870.
+// `npm run dev` talks to a running `studio` backend on :7880.
+const studio = "http://127.0.0.1:7880";
 export default defineConfig({
-  base: "./", // relative assets: also served under /m/<id>/ by storytelling-studio
   plugins: [react()],
-  server: {
-    proxy: {
-      "/api": "http://127.0.0.1:7870",
-      "/media": "http://127.0.0.1:7870",
-    },
-  },
+  server: { proxy: { "/api": studio, "/m": studio, "/media": studio, "/files": studio } },
 });

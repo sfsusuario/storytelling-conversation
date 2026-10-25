@@ -75,7 +75,7 @@ export function IdeasModal({
     setError(null);
     const q = new URLSearchParams({ source, area });
     exclude.forEach((i) => q.append("exclude", i.topic));
-    getJSON<Idea[]>(`api/ideas?${q}`)
+    getJSON<Idea[]>(`/m/conversacion/api/ideas?${q}`)
       .then((list) => {
         setIdeas(list);
         setSelected(null);

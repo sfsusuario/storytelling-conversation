@@ -65,7 +65,7 @@ export function useJob(jobId: string | null): { events: JobEvent[]; done: boolea
     setEvents([]);
     setDone(false);
     if (!jobId) return;
-    const source = new EventSource(`api/jobs/${jobId}/events`);
+    const source = new EventSource(`/m/conversacion/api/jobs/${jobId}/events`);
     source.onmessage = (msg) => {
       const event = JSON.parse(msg.data) as JobEvent;
       if (event.kind === "end") {

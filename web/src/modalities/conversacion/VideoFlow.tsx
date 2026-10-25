@@ -51,7 +51,7 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
     setError(null);
     setScriptJob(null);
     try {
-      const { job } = await postJSON<{ job: string }>("api/video/script", {
+      const { job } = await postJSON<{ job: string }>("/m/conversacion/api/video/script", {
         topic,
         demo,
         feedback: withFeedback,
@@ -75,7 +75,7 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
     setError(null);
     try {
       const res = await postJSON<{ job: string; eta: number | null }>(
-        `api/video/${scriptResult.draft}/approve`,
+        `/m/conversacion/api/video/${scriptResult.draft}/approve`,
         { options: renderOptions() },
       );
       setEta(res.eta);

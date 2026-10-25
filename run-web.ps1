@@ -1,4 +1,5 @@
-# run-web.ps1 - lanza la interfaz web (React) de Charla en http://127.0.0.1:7870
+# run-web.ps1 - lanza Storytelling Studio en http://127.0.0.1:7880: una sola
+# web con todas las modalidades (Conversacion, Escalera) e historial compartido.
 # La primera vez compila la interfaz (necesita Node.js: npm install + build).
 # Uso:  .\run-web.ps1            (-Rebuild fuerza recompilar la interfaz)
 param([switch]$Rebuild)
@@ -6,7 +7,16 @@ param([switch]$Rebuild)
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
 . "$PSScriptRoot\_python.ps1"
-$py = Resolve-CharlaPython
+
+# Entorno del proyecto (.venv: torch XPU, kokoro, diffusers... para Escalera).
+# Sin .venv se usa el Python del sistema (Escalera sin motores locales).
+$py = if (Test-Path ".venv\Scripts\python.exe") { (Resolve-Path ".venv\Scripts\python.exe").Path } else { Resolve-CharlaPython }
+& $py -c "import studio" 2>$null
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "Instalando el proyecto en $py ..." -ForegroundColor Cyan
+    & $py -m pip install -q -e ".[ui]"
+    if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: fallo la instalacion." -ForegroundColor Red; exit 1 }
+}
 
 if ($Rebuild -or -not (Test-Path "web\dist\index.html")) {
     if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
@@ -23,5 +33,5 @@ if ($Rebuild -or -not (Test-Path "web\dist\index.html")) {
     } finally { Pop-Location }
 }
 
-& $py -m charla.web
+& $py -m studio.app
 exit $LASTEXITCODE
