@@ -130,6 +130,7 @@ cat <<MSG
   4. HTTPS:                  sudo apt install -y python3-certbot-apache && sudo certbot --apache -d api.storyteller.fierro.dev
   5. En el PC, en local/.env: STUDIO_WORKER_TOKEN=<el WORKER_TOKEN de este .env>  y  .\run-worker.ps1
 
+  Sin systemd:               sudo bash serve.sh start   (stop / restart / status / logs / debug)
   Actualizar después:        bash deploy.sh
 
 MSG
