@@ -67,6 +67,15 @@ def test_demo_flow():
     video = [e for e in evs if e["kind"] == "result"][0]["video_url"]
     assert video.startswith("/media/") and client.get(video).status_code == 200
 
+    # "Regenerar voces": same draft, voices and clips wiped and redone
+    res = client.post(f"/api/video/{result['draft']}/approve",
+                      json={"options": {"tts_engine": "edge"}, "redo_voice": True}).json()
+    evs = events(client, res["job"])
+    texts = [e.get("text", "") for e in evs]
+    assert any("force: cleared 02_audio" in t for t in texts), texts[:8]
+    assert not any("(cached)" in t for t in texts if "tts:" in t)
+    assert [e for e in evs if e["kind"] == "result"][0]["video_url"]
+
 
 if __name__ == "__main__":
     test_classify()

@@ -68,13 +68,14 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
     }
   };
 
-  const approve = async () => {
+  // redoVoice: same script, fresh voices + video (cloned voices vary per take)
+  const approve = async (redoVoice = false) => {
     if (!scriptResult) return;
     setError(null);
     try {
       const res = await postJSON<{ job: string; eta: number | null }>(
         `/m/conversacion/api/video/${scriptResult.draft}/approve`,
-        { options: renderOptions() },
+        { options: renderOptions(), redo_voice: redoVoice },
       );
       setEta(res.eta);
       setRenderJob(res.job);
@@ -255,7 +256,7 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
             <button className="ghost" disabled={!script.done || demo} onClick={() => writeScript(feedback)}>
               🔄 Regenerar
             </button>
-            <button className="primary big" disabled={!scriptResult} onClick={approve}>
+            <button className="primary big" disabled={!scriptResult} onClick={() => approve()}>
               ✅ Aprobar y crear video
             </button>
           </div>
@@ -313,6 +314,18 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
                 )}
               </div>
               <p className="muted small">Carpeta: {videoResult.folder}</p>
+              <div className="row">
+                <div className="segmented" aria-label="Motor de voz">
+                  {defaults.engines.map((e) => (
+                    <button key={e} className={engine === e ? "on" : ""} onClick={() => setEngine(e)}>
+                      {e}
+                    </button>
+                  ))}
+                </div>
+                <button className="ghost" onClick={() => approve(true)} title="Mismo guion, voces nuevas">
+                  🎙 Regenerar voces
+                </button>
+              </div>
               <button className="primary" onClick={restart}>➕ Otro video</button>
             </div>
           </div>

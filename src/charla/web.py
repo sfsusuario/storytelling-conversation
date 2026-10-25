@@ -151,6 +151,7 @@ class ScriptRequest(BaseModel):
 
 class ApproveRequest(BaseModel):
     options: dict = Field(default_factory=dict)
+    redo_voice: bool = False   # discard voices + clips: a fresh take, same script
 
 
 class BatchRequest(BaseModel):
@@ -254,7 +255,11 @@ def create_app() -> FastAPI:
             raise HTTPException(422, str(e))
 
         def work(job: Job) -> dict:
-            from .pipeline import continue_pipeline
+            from .pipeline import _apply_force, continue_pipeline
+            if req.redo_voice:  # same invalidation as --force-from tts
+                _apply_force(draft.output_dir,
+                             dataclasses.replace(draft.options, force=False,
+                                                 force_from="tts"), job.log)
             result = continue_pipeline(draft, on_progress=job.log)
             return {"video_url": _media_url(result.final_video),
                     "title": result.title, "social": result.social,
