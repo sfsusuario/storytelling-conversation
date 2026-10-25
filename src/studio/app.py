@@ -12,7 +12,11 @@ Run from the repo root (every modality reads ./.env and writes under ./output).
 from __future__ import annotations
 
 import argparse
+import ipaddress
+import json
 import os
+import shutil
+import socket
 import subprocess
 import sys
 import threading
@@ -86,16 +90,57 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--port", type=int,
                    default=int(os.environ.get("STUDIO_PORT", DEFAULT_PORT)))
     p.add_argument("--no-browser", action="store_true")
+    p.add_argument("--tailscale", action="store_true",
+                   default=os.environ.get("STUDIO_TAILSCALE") == "1",
+                   help="also listen on this machine's Tailscale IP (only your "
+                        "tailnet devices can reach it; never the local Wi-Fi)")
     args = p.parse_args(argv)
     import uvicorn
     if not WEB_DIST.is_dir():
         print("aviso: falta web/dist; ejecuta .\\run-ui.ps1 o 'cd web; npm install; npm run build'")
+    hosts = ["127.0.0.1"]
+    if args.tailscale:
+        found = tailscale_address()
+        if not found:
+            print("error: Tailscale no está instalado o conectado (abre la app e inicia sesión)",
+                  file=sys.stderr)
+            return 1
+        ip, name = found
+        hosts.append(ip)
+        print(f"Desde tus dispositivos Tailscale: http://{name or ip}:{args.port}")
     url = f"http://127.0.0.1:{args.port}"
     print(f"Storytelling Studio: {url}")
     if not args.no_browser:
         threading.Timer(1.5, webbrowser.open, args=(url,)).start()
-    uvicorn.run(create_app(), host="127.0.0.1", port=args.port, log_level="warning")
+    # one server, one socket per address (loopback + Tailscale only)
+    sockets = []
+    for host in hosts:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind((host, args.port))
+        sockets.append(s)
+    server = uvicorn.Server(uvicorn.Config(create_app(), log_level="warning"))
+    server.run(sockets=sockets)
     return 0
+
+
+def tailscale_address() -> tuple[str, str | None] | None:
+    """(Tailscale IPv4, MagicDNS name) of this machine, or None when
+    Tailscale is missing or logged out. Only a 100.64.0.0/10 address is
+    accepted, so the studio can never end up listening on the LAN."""
+    exe = shutil.which("tailscale") or str(
+        Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "Tailscale" / "tailscale.exe")
+    try:
+        out = subprocess.run([exe, "ip", "-4"], capture_output=True, text=True,
+                             timeout=10, stdin=subprocess.DEVNULL)
+        ip = (out.stdout or "").strip().splitlines()[0] if out.returncode == 0 else ""
+        if not ip or ipaddress.ip_address(ip) not in ipaddress.ip_network("100.64.0.0/10"):
+            return None
+        status = subprocess.run([exe, "status", "--json"], capture_output=True, text=True,
+                                timeout=10, stdin=subprocess.DEVNULL)
+        name = (json.loads(status.stdout or "{}").get("Self") or {}).get("DNSName", "").rstrip(".")
+        return ip, name.split(".")[0] if name else None
+    except (OSError, ValueError, IndexError, subprocess.SubprocessError):
+        return None
 
 
 if __name__ == "__main__":

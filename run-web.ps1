@@ -2,7 +2,8 @@
 # web con todas las modalidades (Conversacion, Escalera) e historial compartido.
 # La primera vez compila la interfaz (necesita Node.js: npm install + build).
 # Uso:  .\run-web.ps1            (-Rebuild fuerza recompilar la interfaz)
-param([switch]$Rebuild)
+#       .\run-web.ps1 -Remote    tambien accesible desde tus dispositivos Tailscale
+param([switch]$Rebuild, [switch]$Remote)
 
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot
@@ -33,5 +34,7 @@ if ($Rebuild -or -not (Test-Path "web\dist\index.html")) {
     } finally { Pop-Location }
 }
 
-& $py -m studio.app
+$studioArgs = @()
+if ($Remote) { $studioArgs += "--tailscale" }
+& $py -m studio.app @studioArgs
 exit $LASTEXITCODE
