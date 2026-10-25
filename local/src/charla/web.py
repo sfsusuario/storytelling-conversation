@@ -117,6 +117,9 @@ class Job:
 # shortcut: unbounded in-memory registry; fine for a local single-user app.
 _JOBS: dict[str, Job] = {}
 _DRAFTS: dict[str, object] = {}    # script job id -> pipeline.ScriptDraft
+# The one "Crear video" flow in progress, so every device (PC, phone) opening
+# the web follows the same script/render jobs instead of starting from zero.
+_FLOW: dict = {}
 
 
 def _media_url(path: Path | str | None) -> str | None:
@@ -146,6 +149,7 @@ class ScriptRequest(BaseModel):
     topic: str = ""
     demo: bool = False
     feedback: str = ""
+    auto: bool = False   # Modo automático: approve as soon as the script is written
     options: dict = Field(default_factory=dict)
 
 
@@ -240,7 +244,19 @@ def create_app() -> FastAPI:
             _DRAFTS[job.id] = draft
             return {"draft": job.id, "title": draft.script["title"],
                     "turns": draft.script["turns"], "social": draft.social}
-        return {"job": Job().start(work).id}
+        job = Job().start(work)
+        _FLOW.clear()
+        _FLOW.update(script_job=job.id, topic=req.topic, demo=req.demo, auto=req.auto)
+        return {"job": job.id}
+
+    @app.get("/api/video/flow")
+    def video_flow():
+        return _FLOW if _FLOW.get("script_job") in _JOBS else {}
+
+    @app.delete("/api/video/flow")
+    def video_flow_reset():
+        _FLOW.clear()
+        return {"ok": True}
 
     @app.post("/api/video/{draft_id}/approve")
     def video_approve(draft_id: str, req: ApproveRequest):
@@ -249,6 +265,12 @@ def create_app() -> FastAPI:
         draft = _DRAFTS.get(draft_id)
         if draft is None:
             raise HTTPException(404, "Ese guion ya no existe; genéralo de nuevo.")
+        running = _JOBS.get(_FLOW.get("render_job", ""))
+        if (not req.redo_voice and _FLOW.get("script_job") == draft_id
+                and running and not running.done):
+            # a second device (or Modo automático on both) approving the same
+            # script follows the render already running instead of starting another
+            return {"job": running.id, "eta": _FLOW.get("eta"), "turns": len(draft.turns)}
         try:
             draft = with_render_options(draft, **req.options)
         except Exception as e:
@@ -267,6 +289,8 @@ def create_app() -> FastAPI:
         job = Job().start(work)
         eta = estimate_seconds(engine_key(draft.options.tts_engine,
                                           draft.use_rvc), len(draft.turns))
+        if _FLOW.get("script_job") == draft_id:
+            _FLOW.update(render_job=job.id, eta=eta, auto=False)
         return {"job": job.id, "eta": eta, "turns": len(draft.turns)}
 
     @app.post("/api/batch")

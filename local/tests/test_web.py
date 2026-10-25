@@ -53,11 +53,17 @@ def test_demo_flow():
                        json={"demo": True, "options": {"bogus": 1}}).status_code == 422
 
     job = client.post("/api/video/script", json={"demo": True}).json()["job"]
+    assert client.get("/api/video/flow").json()["script_job"] == job  # other devices follow it
     result = [e for e in events(client, job) if e["kind"] == "result"][0]
     assert len(result["turns"]) == 4
 
     res = client.post(f"/api/video/{result['draft']}/approve",
                       json={"options": {"tts_engine": "edge"}}).json()
+    # a second device approving the same script follows the running render
+    again = client.post(f"/api/video/{result['draft']}/approve",
+                        json={"options": {"tts_engine": "edge"}}).json()
+    assert again["job"] == res["job"]
+    assert client.get("/api/video/flow").json()["render_job"] == res["job"]
     evs = events(client, res["job"])
     kinds = [e["kind"] for e in evs]
     assert "error" not in kinds, [e for e in evs if e["kind"] == "error"]
@@ -75,6 +81,8 @@ def test_demo_flow():
     assert any("force: cleared 02_audio" in t for t in texts), texts[:8]
     assert not any("(cached)" in t for t in texts if "tts:" in t)
     assert [e for e in evs if e["kind"] == "result"][0]["video_url"]
+    client.delete("/api/video/flow")
+    assert client.get("/api/video/flow").json() == {}
 
 
 if __name__ == "__main__":

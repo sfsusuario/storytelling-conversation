@@ -112,7 +112,7 @@ def create_app(password: str | None = None, worker_token: str | None = None,
 
     app = FastAPI(title="Storytelling Studio (servidor)", docs_url=None, redoc_url=None)
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True,
-                       allow_methods=["*"], allow_headers=["*"])
+                       allow_methods=["*"], allow_headers=["*"], expose_headers=["X-Offline"])
 
     # ── sessions (phone/browser) ────────────────────────────────────────────
     def sign(exp: int) -> str:

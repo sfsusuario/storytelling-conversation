@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { lastOf, mmss, postJSON, useElapsed, useJob, usePersisted, type Defaults, type Turn } from "./api";
 import { CopyButton, ErrorBox, IdeasModal, LogPanel, Spinner, Stepper } from "./ui";
 import { apiUrl, downloadUrl } from "../../remote";
@@ -9,6 +9,9 @@ type Step = "topic" | "script" | "render" | "done";
 
 type ScriptResult = { draft: string; title: string; turns: Turn[]; social: string };
 type VideoResult = { video_url: string | null; title: string; social: string; folder: string };
+// GET /api/video/flow: the flow in progress on the PC, shared by every device
+type Flow = { script_job?: string; render_job?: string; eta?: number | null; topic?: string; demo?: boolean; auto?: boolean };
+const FLOW_URL = "/m/conversacion/api/video/flow";
 
 // the flow survives a reload: the backend keeps each job and replays its events
 const KEY = "charla.flow.";
@@ -62,7 +65,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
     watermark,
   });
 
-  const writeScript = async (withFeedback = "") => {
+  const writeScript = async (withFeedback = "", withAuto = false) => {
     setError(null);
     setScriptJob(null);
     try {
@@ -70,6 +73,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
         topic,
         demo,
         feedback: withFeedback,
+        auto: withAuto,
         options: {
           language,
           max_turns: maxTurns,
@@ -143,7 +147,35 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
     setFeedback("");
     setError(null);
     setAuto(false);
+    fetch(FLOW_URL, { method: "DELETE" }).catch(() => {}); // a reload (any device) starts clean too
   };
+
+  // Follow the flow another device started (or this one before a reload):
+  // a video started on the PC shows its progress on the phone and vice versa.
+  const jobs = useRef({ scriptJob, renderJob });
+  jobs.current = { scriptJob, renderJob };
+  useEffect(() => {
+    const sync = () =>
+      fetch(FLOW_URL)
+        .then((r) => (r.ok && !r.headers.get("x-offline") ? (r.json() as Promise<Flow>) : null))
+        .then((f) => {
+          if (!f?.script_job) return;
+          const cur = jobs.current;
+          if (f.script_job === cur.scriptJob && (f.render_job ?? null) === cur.renderJob) return;
+          setTopic(f.topic ?? "");
+          setDemo(!!f.demo);
+          setScriptJob(f.script_job);
+          setRenderJob(f.render_job ?? null);
+          setEta(f.eta ?? null);
+          setAuto(!!f.auto);
+          setError(null);
+          setStep(f.render_job ? "render" : "script");
+        })
+        .catch(() => {});
+    sync();
+    const timer = setInterval(sync, 5000);
+    return () => clearInterval(timer);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // "Otra versión" from this modality's history: same topic, back to the start
   useEffect(() => {
@@ -245,7 +277,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
               title="Guion, voces y video de una vez, sin pararse a revisar"
               onClick={() => {
                 setAuto(true);
-                writeScript();
+                writeScript("", true);
               }}
             >
               ⚡ Modo automático
