@@ -65,7 +65,7 @@ charla "tema" --dry-run
 
 # asistente guiado / interfaz web
 .\run-cli.ps1     # escribe ? como tema para elegir de una lluvia de ideas
-.\run-ui.ps1      # o: charla-ui
+.\run-ui.ps1      # interfaz web (React); Gradio avanzado: .\run-gradio.ps1 o charla-ui
 ```
 
 **Lluvia de ideas.** En la interfaz, el botón **💡 Lluvia de ideas** (bajo
@@ -87,6 +87,34 @@ Flags útiles: `--language`, `--max-turns` / `--min-turns`,
 `--chroma-similarity/-blend`, `--no-subtitles`, `--no-watermark`,
 `--force` / `--force-from {script,tts,render}`, `--reencode-concat`,
 `--list-emotions`. Ver `charla --help`.
+
+## Interfaz web (recomendada)
+
+```powershell
+.\run-ui.ps1       # abre http://127.0.0.1:7870  (o: run-web.ps1 / charla-web)
+```
+
+Interfaz React + TypeScript con dos pestañas:
+
+- **Crear video.** Muestra el flujo por pasos (Tema → Guion → Voz → Video →
+  Listo).
+  - **💡 Ideas** abre el selector de temas.
+  - El guion se revisa como chat y se aprueba o regenera.
+  - El progreso se ve en vivo, por turno (voz lista / clip listo), con ETA.
+  - Al terminar: reproductor, descripción para copiar y descarga.
+- **Lote automático.** Muestra una tarjeta por video con su etapa, permite
+  detener el lote, y da `publicar.txt` para copiar.
+
+A la vista solo quedan el tema y el motor de voz. Idioma, turnos,
+guionista, subtítulos, marca de agua y ambiente están en **⚙ Ajustes**. Todo
+lo demás usa los valores por defecto de `.env` / `config.py`.
+
+`.\run-gradio.ps1` (Gradio) sigue disponible como modo avanzado, con todos los
+ajustes, el historial y la subida a TikTok.
+
+La primera vez, `run-web.ps1` compila la interfaz con Node.js: `npm install`
+y `npm run build` en `web/`. Para desarrollar con recarga en caliente:
+`charla-web` en una terminal y `cd web; npm run dev` en otra.
 
 ## Lote automático (varios videos de ciencia con Ollama)
 

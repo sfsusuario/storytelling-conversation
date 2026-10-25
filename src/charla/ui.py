@@ -121,47 +121,10 @@ def _language_choices() -> list[str]:
     return [_language_label(code) for code in codes]
 
 
-_ALL_AREAS = "(todas)"
-_AREA_ICONS = {
-    "animales": "🐾", "biología": "🧬", "genética": "🧬", "botánica": "🌱",
-    "paleontología": "🦈", "cuerpo humano": "🫀", "astronomía": "🔭",
-    "espacio": "🚀", "física": "⚡", "química": "⚗️", "geología": "🌋",
-    "geografía": "🗺️", "ecología": "🌊", "historia de la ciencia": "📜",
-    "tecnología": "💻", "matemáticas": "🔢",
-}
-_IDEAS_PER_ROUND = 8
-
-
-def _bank_areas() -> list[str]:
-    from .batch import bank_areas
-    return bank_areas()
-
-
-def _idea_choices(source: str, area: str, model: str | None,
-                  exclude: list[str]) -> list[tuple[str, str]]:
-    """(label, topic) pairs for the idea picker: verified bank facts, or
-    fresh ideas from Ollama. A round that runs out of unseen bank facts
-    starts over instead of coming back empty."""
-    from .batch import BatchError, generate_topics
-    from .script_gen import model_for
-
-    area = (area or "").strip()
-    theme = DEFAULT_BATCH_THEME if area in ("", _ALL_AREAS) else area
-    model = model_for("ollama", model)
-
-    def draw(excluded: list[str]):
-        return generate_topics(_IDEAS_PER_ROUND, source, theme, model,
-                               DEFAULT_LANGUAGE, exclude=excluded,
-                               log=lambda *_: None)
-    try:
-        topics = draw(exclude)
-    except BatchError:
-        if not exclude:
-            raise
-        topics = draw([])
-    unverified = "  (sin verificar)" if source == "ollama" else ""
-    return [(f"{_AREA_ICONS.get(t.area.lower(), '💡')} {t.tema}{unverified}",
-             t.tema) for t in topics]
+# idea picker helpers live in batch.py (shared with the web UI)
+from .batch import ALL_AREAS as _ALL_AREAS  # noqa: E402
+from .batch import bank_areas as _bank_areas  # noqa: E402
+from .batch import idea_choices as _idea_choices  # noqa: E402
 
 
 def _model_choices(provider: str, current: str | None):

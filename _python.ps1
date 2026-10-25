@@ -1,4 +1,4 @@
-# _python.ps1 - helpers compartidos por install.ps1, run-ui.ps1 y run-cli.ps1.
+# _python.ps1 - helpers compartidos por install.ps1, run-gradio.ps1, run-web.ps1, run-lote.ps1 y run-cli.ps1.
 # Se carga con dot-source:  . "$PSScriptRoot\_python.ps1"
 #
 # Problema que resuelve: una terminal abierta ANTES de instalar Python (p. ej.

@@ -138,6 +138,43 @@ def bank_areas() -> list[str]:
         return []
 
 
+ALL_AREAS = "(todas)"
+AREA_ICONS = {
+    "animales": "🐾", "biología": "🧬", "genética": "🧬", "botánica": "🌱",
+    "paleontología": "🦈", "cuerpo humano": "🫀", "astronomía": "🔭",
+    "espacio": "🚀", "física": "⚡", "química": "⚗️", "geología": "🌋",
+    "geografía": "🗺️", "ecología": "🌊", "historia de la ciencia": "📜",
+    "tecnología": "💻", "matemáticas": "🔢",
+}
+IDEAS_PER_ROUND = 8
+
+
+def idea_choices(source: str, area: str, model: str | None,
+                 exclude: list[str]) -> list[tuple[str, str]]:
+    """(label, topic) pairs for the idea pickers (Gradio and web): verified
+    bank facts, or fresh ideas from Ollama. A round that runs out of unseen
+    bank facts starts over instead of coming back empty."""
+    from .script_gen import model_for
+
+    area = (area or "").strip()
+    theme = DEFAULT_BATCH_THEME if area in ("", ALL_AREAS) else area
+    model = model_for("ollama", model)
+
+    def draw(excluded: list[str]):
+        return generate_topics(IDEAS_PER_ROUND, source, theme, model,
+                               DEFAULT_LANGUAGE, exclude=excluded,
+                               log=lambda *_: None)
+    try:
+        topics = draw(exclude)
+    except BatchError:
+        if not exclude:
+            raise
+        topics = draw([])
+    unverified = "  (sin verificar)" if source == "ollama" else ""
+    return [(f"{AREA_ICONS.get(t.area.lower(), '💡')} {t.tema}{unverified}",
+             t.tema) for t in topics]
+
+
 def bank_topics(count: int, theme: str = DEFAULT_BATCH_THEME,
                 exclude: list[str] | None = None,
                 log: Log = print) -> list[Topic]:

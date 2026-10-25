@@ -1,0 +1,27 @@
+# run-web.ps1 - lanza la interfaz web (React) de Charla en http://127.0.0.1:7870
+# La primera vez compila la interfaz (necesita Node.js: npm install + build).
+# Uso:  .\run-web.ps1            (-Rebuild fuerza recompilar la interfaz)
+param([switch]$Rebuild)
+
+$ErrorActionPreference = 'Stop'
+Set-Location $PSScriptRoot
+. "$PSScriptRoot\_python.ps1"
+$py = Resolve-CharlaPython
+
+if ($Rebuild -or -not (Test-Path "web\dist\index.html")) {
+    if (-not (Get-Command npm -ErrorAction SilentlyContinue)) {
+        Write-Host "ERROR: falta Node.js (npm) para compilar la interfaz web." -ForegroundColor Red
+        Write-Host "  Instala Node.js LTS desde https://nodejs.org/ y reintenta."
+        exit 1
+    }
+    Write-Host "Compilando la interfaz web (solo la primera vez)..." -ForegroundColor Cyan
+    Push-Location web
+    try {
+        if (-not (Test-Path "node_modules")) { npm install --no-audit --no-fund }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { Write-Host "ERROR: fallo la compilacion." -ForegroundColor Red; exit 1 }
+    } finally { Pop-Location }
+}
+
+& $py -m charla.web
+exit $LASTEXITCODE

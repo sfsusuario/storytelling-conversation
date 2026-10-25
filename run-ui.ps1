@@ -1,10 +1,7 @@
-# run-ui.ps1 - lanza la interfaz web (Gradio) de Charla.
-# Uso:  .\run-ui.ps1
+# run-ui.ps1 - lanza la interfaz web de Charla (React, http://127.0.0.1:7870).
+# Modo avanzado (Gradio): .\run-gradio.ps1
+# Uso:  .\run-ui.ps1            (-Rebuild fuerza recompilar la interfaz)
+param([switch]$Rebuild)
 
-$ErrorActionPreference = 'Stop'
-Set-Location $PSScriptRoot
-. "$PSScriptRoot\_python.ps1"
-
-$py = Resolve-CharlaPython
-& $py -m charla.ui
+& "$PSScriptRoot\run-web.ps1" -Rebuild:$Rebuild
 exit $LASTEXITCODE

@@ -6,7 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
     "anthropic>=1.11",
     "google-genai>=1.20",
-    "edge-tts>=7.0",
+    "edge-tts>=7.3.1",
     "num2words>=0.5.13",
     "pydantic>=2.7",
     "requests>=2.31",
@@ -14,13 +14,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-ui = ["gradio>=6.0"]
+ui = ["gradio>=6.0", "fastapi", "uvicorn"]
 
 [project.scripts]
 charla = "charla.cli:main"
 charla-ui = "charla.ui:main"
 charla-upload = "charla.tiktok:main"
 charla-lote = "charla.batch:main"
+charla-web = "charla.web:main"
 
 [build-system]
 requires = ["setuptools>=68"]

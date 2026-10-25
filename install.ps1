@@ -82,7 +82,7 @@ Write-Host ""
 Write-Host "=== Listo ===" -ForegroundColor Green
 Write-Host "  Prueba gratis (sin LLM):  charla --script-file examples\demo_script.json"
 Write-Host "  Generacion guiada:        .\run-cli.ps1"
-Write-Host "  Interfaz web:             .\run-ui.ps1"
+Write-Host "  Interfaz web:             .\run-ui.ps1   (Gradio avanzado: .\run-gradio.ps1)"
 Write-Host "  Guion local sin clave:    charla ""tema"" --text-provider ollama"
 Write-Host "  Voces del doblaje (RVC):  .\install-rvc.ps1   (opcional, ~1.5 GB)"
 Write-Host "  Voz clonada (Chatterbox): .\install-chatterbox.ps1 [-Xpu]"

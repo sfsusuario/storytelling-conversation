@@ -11,4 +11,6 @@ __pycache__/
 *.egg-info/
 build/
 charla_code.zip
+web/node_modules/
+web/dist/
 *.mp4
