@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
-from .history import read_charla, read_escalator
+from .history import read_charla, read_cuento, read_escalator
 
 
 @dataclass(frozen=True)
@@ -37,6 +37,11 @@ def _escalator_app():
     return create_app()
 
 
+def _cuento_app():
+    from cuento.web import create_app
+    return create_app()
+
+
 def default_modalities() -> list[Modality]:
     from escalator.config import OUTPUT_ROOT as escalera_output
     return [
@@ -50,6 +55,13 @@ def default_modalities() -> list[Modality]:
             description="Tu retrato sube 5 niveles de personajes con una frase.",
             app=_escalator_app, output=escalera_output, media_route="/files",
             history=read_escalator),
+        # output/cuento lives under output/, so Conversación's /media mount
+        # (first) already serves its files at /media/cuento/...
+        Modality(
+            id="cuento", name="Cuento", icon="📖",
+            description="Un cuento ilustrado en escenas, narrado, con tu foto o con personajes inventados.",
+            app=_cuento_app, output=Path("output/cuento"), media_route="/media/cuento",
+            history=read_cuento),
     ]
 
 

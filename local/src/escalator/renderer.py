@@ -58,19 +58,21 @@ def _sub_textfile(clips_dir: Path, name: str, content: str) -> str:
 
 
 def _subtitle_filters(scene, clips_dir: Path, duration: float,
-                      trigger_delay: float) -> str:
+                      trigger_delay: float, keep_case: bool = False) -> str:
     """Progressive narration captions: each chunk appears as it is spoken.
 
     Falls back to the full (wrapped) text when word timings are unavailable.
+    keep_case leaves the narration as written (stories: character names).
     """
     if scene.word_timings:
         filters = []
         # Sentence case over the WHOLE narration: only the very first letter
         # of the first chunk is uppercase; every other word is lowercase.
-        lowered = [{**w, "w": w["w"].lower()} for w in scene.word_timings]
+        lowered = (scene.word_timings if keep_case else
+                   [{**w, "w": w["w"].lower()} for w in scene.word_timings])
         chunks = _chunk_words(lowered)
         for i, (text, start, end) in enumerate(chunks):
-            if i == 0 and text:
+            if i == 0 and text and not keep_case:
                 text = text[0].upper() + text[1:]
             path = _sub_textfile(
                 clips_dir, f"{scene.scene_id}.sub{i:02d}.txt",
@@ -87,7 +89,8 @@ def _subtitle_filters(scene, clips_dir: Path, duration: float,
         return "".join(filters)
 
     text = scene.speech_script.strip()
-    text = text[0].upper() + text[1:].lower() if text else text
+    if text and not keep_case:
+        text = text[0].upper() + text[1:].lower()
     wrapped = "\n".join(textwrap.wrap(text, width=28))
     path = _sub_textfile(clips_dir, f"{scene.scene_id}.sub.txt", wrapped)
     end = max(0.5, duration - 0.35)
@@ -171,9 +174,11 @@ def render_scene_clip(ffmpeg: str, timeline: Timeline, scene, clips_dir: Path,
     if timeline.subtitles:
         if scene.speech_script:
             subtitle = _subtitle_filters(scene, clips_dir, d,
-                                         scene.audio_trigger_delay)
-        total = max(s.persona.level for s in timeline.scenes)
-        level = _level_filter(timeline.level_word, scene.persona.level, total)
+                                         scene.audio_trigger_delay,
+                                         timeline.keep_case)
+        if timeline.level_word:  # "" = no level badge (stories)
+            total = max(s.persona.level for s in timeline.scenes)
+            level = _level_filter(timeline.level_word, scene.persona.level, total)
     # A still image: everything static (fill, level badge, watermark) is drawn
     # once on the single decoded frame, then looped; only captions and fades
     # run per frame. A motion clip plays once, stretched, then holds.

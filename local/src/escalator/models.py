@@ -45,7 +45,8 @@ class Timeline:
     fit: str = "crop"   # crop (fill, TikTok-style) | blur (blurred bg) | pad (letterbox)
     watermark: str = ""  # bottom-left overlay text; empty = none
     subtitles: bool = True  # burn narration subtitles into each scene
-    level_word: str = "NIVEL"  # word for the top level indicator
+    level_word: str = "NIVEL"  # word for the top level indicator; "" = no badge
+    keep_case: bool = False  # subtitles as written (names) instead of sentence case
     transition_type: str = "FadeToBlack"
     transition_duration: float = 0.5
 

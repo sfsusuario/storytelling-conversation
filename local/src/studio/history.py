@@ -110,6 +110,35 @@ def read_escalator(modality: str, output: Path, prefix: str) -> list[dict]:
     return runs
 
 
+def read_cuento(modality: str, output: Path, prefix: str) -> list[dict]:
+    """Cuento: output/cuento/<run>/pipeline.json (Title, Premise, Tone, Scenes)."""
+    from cuento.config import TONES   # labels only; lazy so the studio stays light
+    runs = []
+    for run_dir, video in _finished_runs(output):
+        m = _read_json(run_dir / "pipeline.json")
+        scenes = m.get("Scenes") or []
+        first_image = (scenes[0].get("Assets") or {}).get("image") if scenes else None
+        tone = TONES.get(m.get("Tone"), ("", "", {}))
+        genre = tone[2].get(m.get("Genre"), ("", ""))[0]
+        run = {
+            **_base(modality, run_dir, video, prefix, output),
+            "title": m.get("Title") or run_dir.name,
+            "subtitle": " · ".join(x for x in (tone[0], genre, m.get("Premise", "")) if x)[:140],
+            "duration": m.get("Total_Duration"),
+            # another version = the story's own regenerate (same premise and
+            # photo, a new story from the text on)
+            "reuse": {"kind": "regenerate",
+                      "url": f"/m/{modality}/api/history/{quote(run_dir.name)}/regenerate",
+                      "body": {"force_from": "text"}},
+            "meta": {"escenas": len(scenes), "tono": tone[0] or m.get("Tone"),
+                     "voz": m.get("Voice"), "imágenes": m.get("Image_Provider")},
+        }
+        if first_image:
+            run["thumb_url"] = _url(prefix, output, run_dir / first_image)
+        runs.append(run)
+    return runs
+
+
 def collect(modalities) -> list[dict]:
     """All finished runs of every modality, newest first. One unreadable
     modality folder never hides the others."""

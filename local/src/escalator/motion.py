@@ -366,11 +366,14 @@ def generate_motion(mode: str, scenes: list[Scene], motion_dir: Path, fps: int,
                     on_scene: Callable | None = None,
                     on_step: Callable | None = None,
                     variants: dict[str, int] | None = None,
-                    keep: bool = False) -> None:
+                    keep: bool = False,
+                    skip_without_subject: bool = False) -> None:
     """Fill scene.motion_path for every scene (cached per mode/image/duration).
 
     variants: per-scene reroll counter; a bump gives that scene a new seed.
-    keep: reuse existing clips of this mode even if their stamp is outdated."""
+    keep: reuse existing clips of this mode even if their stamp is outdated.
+    skip_without_subject: a scene where rotate3d finds nothing to cut out
+    (an empty landscape) stays a still instead of failing the run."""
     mode = MOTION_ALIASES.get(mode, mode)
     if mode == "none":
         return
@@ -417,8 +420,14 @@ def generate_motion(mode: str, scenes: list[Scene], motion_dir: Path, fps: int,
         progress = (lambda step, total, label, scene=scene:
                     on_step(scene, step, total, label)) if on_step else None
         if mode == "rotate3d":
-            _rotate3d_clip(scene.image_path, out, scene.scene_duration, fps,
-                           ffmpeg, encoder, s, models, progress)
+            try:
+                _rotate3d_clip(scene.image_path, out, scene.scene_duration, fps,
+                               ffmpeg, encoder, s, models, progress)
+            except MotionError as e:
+                if not skip_without_subject or "no subject" not in str(e):
+                    raise
+                log(f"  motion: {scene.scene_id} sin sujeto, se deja fija")
+                continue
         else:
             _liveportrait_clip(scene.image_path, out, motion_dir / "_lp_work",
                                ffmpeg, encoder, progress)

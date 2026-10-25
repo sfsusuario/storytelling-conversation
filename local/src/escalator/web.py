@@ -13,19 +13,20 @@ import importlib.util
 import json
 import os
 import threading
-import time
-import uuid
 from pathlib import Path
+
+from studio.runs import Run, add_run_routes, make_file_url
+from studio.runs import active_run as _active_run
 
 from .config import (has_secret, CURATED_VOICES, IMAGE_PROVIDERS, KOKORO_VOICES,
                      LANGUAGE_NAMES, STYLE_SETS, PipelineOptions)
 from .history import OUTPUT_ROOT, delete_run, list_runs, regenerate_options
 from .motion import MOTION_MODES, liveportrait_available
+from .pipeline import PipelineCancelled
 
 WEB_DIST = Path(__file__).resolve().parents[3] / "server" / "frontend" / "dist"
 UPLOADS = OUTPUT_ROOT / "_uploads"
 PREVIEWS = OUTPUT_ROOT / "_previews"
-TERMINAL = {"done", "error", "cancelled"}
 # Options the browser may set; paths and dry-run stay server-controlled.
 CLIENT_OPTIONS = {f.name for f in dataclasses.fields(PipelineOptions)} - {
     "base_image", "output_dir", "dry_run"}
@@ -38,103 +39,23 @@ SET_LABELS_ES = {
 }
 
 
-def file_url(path: str | Path | None) -> str | None:
-    """/files/... URL for a path inside output/, None for anything else."""
-    if not path:
-        return None
-    try:
-        rel = Path(path).resolve().relative_to(OUTPUT_ROOT.resolve())
-    except ValueError:
-        return None
-    url = f"/files/{rel.as_posix()}"
-    # mtime busts the browser cache when a stage regenerates the same file name
-    return f"{url}?v={int(Path(path).stat().st_mtime)}" if Path(path).exists() else url
-
-
-class Run:
-    def __init__(self, options: PipelineOptions, upload_id: str):
-        self.id = uuid.uuid4().hex[:12]
-        self.upload_id = upload_id
-        self.options = options
-        self.events: list[dict] = []
-        self.cond = threading.Condition()
-        self.cancel = threading.Event()
-        self.started = time.time()
-        # Rerolls asked for while this run works: redone by a follow-up run.
-        self.queued: dict[str, list[str]] = {"image": [], "motion": []}
-
-    @property
-    def status(self) -> str:
-        last = self.events[-1]["type"] if self.events else ""
-        return last if last in TERMINAL else "running"
-
-    def push(self, event: dict) -> None:
-        event = {**event, "ts": round(time.time() - self.started, 3)}
-        for key in ("path", "video"):
-            if key in event:
-                event[f"{key}_url"] = file_url(event[key])
-                del event[key]
-        with self.cond:
-            self.events.append(event)
-            self.cond.notify_all()
-
-    def start(self) -> None:
-        threading.Thread(target=self._work, daemon=True).start()
-
-    def queue_reroll(self, scene_id: str, kind: str) -> None:
-        with self.cond:
-            if scene_id not in self.queued[kind]:
-                self.queued[kind].append(scene_id)
-        self.push({"type": "queued", "scene_id": scene_id, "kind": kind})
-
-    def follow_up(self, reroll_images=(), reroll_motion=()) -> "Run":
-        """A new run with these options that redoes only the given scenes;
-        everything else comes from the cache."""
-        options = dataclasses.replace(self.options, force=False, force_from=None,
-                                      reroll_images=list(reroll_images),
-                                      reroll_motion=list(reroll_motion))
-        run = Run(options, self.upload_id)
-        RUNS[run.id] = run
-        run.start()
-        return run
-
-    def _chain(self) -> None:
-        """Before the terminal event: start the follow-up for queued rerolls
-        and announce it, so the browser switches to it."""
-        with self.cond:
-            images, motion = self.queued["image"], self.queued["motion"]
-            self.queued = {"image": [], "motion": []}
-        if images or motion:
-            self.push({"type": "next", "run_id": self.follow_up(images, motion).id})
-
-    def _on_event(self, event: dict) -> None:
-        if event.get("type") == "done":
-            self._chain()
-        self.push(event)
-
-    def _work(self) -> None:
-        from .pipeline import PipelineCancelled, run_pipeline
-
-        self.push({"type": "started", "run_id": self.id,
-                   "upload_id": self.upload_id})
-        try:
-            run_pipeline(self.options,
-                         on_progress=lambda line: self.push(
-                             {"type": "log", "line": str(line)}),
-                         on_event=self._on_event, cancel=self.cancel)
-        except PipelineCancelled:
-            self.push({"type": "cancelled"})  # a cancel drops queued rerolls too
-        except Exception as e:  # reported to the browser, never swallowed
-            self._chain()  # the follow-up also retries what failed (all cached)
-            self.push({"type": "error", "message": str(e),
-                       "kind": type(e).__name__})
-
-
+# /files/... URL for a path inside output/escalera, None for anything else.
+file_url = make_file_url("/files", OUTPUT_ROOT)
 RUNS: dict[str, Run] = {}
 
 
+def _pipeline(options: PipelineOptions, **kwargs):
+    from .pipeline import run_pipeline  # looked up late: tests monkeypatch it
+    return run_pipeline(options, **kwargs)
+
+
+def new_run(options: PipelineOptions, upload_id: str) -> Run:
+    return Run(options, upload_id, registry=RUNS, pipeline=_pipeline,
+               cancelled=PipelineCancelled, url=file_url)
+
+
 def active_run() -> Run | None:
-    return next((r for r in RUNS.values() if r.status == "running"), None)
+    return _active_run(RUNS)
 
 
 @functools.lru_cache(maxsize=None)
@@ -189,7 +110,7 @@ def build_options(upload_id: str, raw: dict) -> PipelineOptions:
 
 def create_app():
     from fastapi import FastAPI, HTTPException, Request, UploadFile
-    from fastapi.responses import FileResponse, StreamingResponse
+    from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
 
     app = FastAPI(title="Escalator")
@@ -242,7 +163,7 @@ def create_app():
                                  body.get("options") or {})
         except (TypeError, ValueError) as e:
             raise HTTPException(400, str(e))
-        run = Run(opts, body["upload_id"])
+        run = new_run(opts, body["upload_id"])
         RUNS[run.id] = run
         run.start()
         return {"run_id": run.id}
@@ -298,74 +219,14 @@ def create_app():
             raise HTTPException(404, "unknown video or missing manifest")
         if motion:
             fields["motion"] = motion
-        run = Run(PipelineOptions(**fields, output_dir=OUTPUT_ROOT / name,
-                                  force_from=force_from), "")
+        run = new_run(PipelineOptions(**fields, output_dir=OUTPUT_ROOT / name,
+                                      force_from=force_from), "")
         RUNS[run.id] = run
         run.start()
         return {"run_id": run.id}
 
-    @app.post("/api/runs/{run_id}/retry")
-    def retry(run_id: str):
-        """Same options, nothing forced: resumes at the step that failed."""
-        run = RUNS.get(run_id)
-        if run is None:
-            raise HTTPException(404, "unknown run")
-        if active_run():
-            raise HTTPException(409, "a video is already being generated")
-        return {"run_id": run.follow_up().id}
-
-    @app.get("/api/runs/{run_id}/events")
-    def events(run_id: str, request: Request):
-        run = RUNS.get(run_id)
-        if run is None:
-            raise HTTPException(404, "unknown run")
-        start = int(request.headers.get("last-event-id", -1)) + 1
-
-        def stream():
-            i = start
-            while True:
-                with run.cond:
-                    if i >= len(run.events):
-                        run.cond.wait(timeout=15)
-                    batch = run.events[i:]
-                if not batch:
-                    yield ": keep-alive\n\n"
-                    continue
-                for event in batch:
-                    yield f"id: {i}\ndata: {json.dumps(event, ensure_ascii=False)}\n\n"
-                    i += 1
-                    if event["type"] in TERMINAL:
-                        return
-
-        return StreamingResponse(stream(), media_type="text/event-stream",
-                                 headers={"Cache-Control": "no-cache"})
-
-    @app.post("/api/runs/{run_id}/reroll")
-    async def reroll(run_id: str, request: Request):
-        """Another variation of one scene's image or motion. Queued while the
-        run works; otherwise starts a follow-up run right away."""
-        run = RUNS.get(run_id)
-        if run is None:
-            raise HTTPException(404, "unknown run")
-        body = await request.json()
-        scene_id, kind = str(body.get("scene_id", "")), body.get("kind")
-        if kind not in ("image", "motion") or not scene_id:
-            raise HTTPException(400, "expected scene_id and kind image|motion")
-        if run.status == "running":
-            run.queue_reroll(scene_id, kind)
-            return {"queued": True}
-        if active_run():
-            raise HTTPException(409, "a video is already being generated")
-        nxt = run.follow_up(*(([scene_id], []) if kind == "image" else ([], [scene_id])))
-        return {"run_id": nxt.id}
-
-    @app.post("/api/runs/{run_id}/cancel")
-    def cancel(run_id: str):
-        run = RUNS.get(run_id)
-        if run is None:
-            raise HTTPException(404, "unknown run")
-        run.cancel.set()
-        return {"ok": True}
+    # /api/runs/{id}/events, reroll, retry, cancel: shared with every modality
+    add_run_routes(app, RUNS)
 
     @app.get("/api/music/preview")
     def music_preview(style_set: str, source: str = "track"):
