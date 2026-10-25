@@ -1,0 +1,5 @@
+# Servidor público: solo FastAPI (no genera videos; eso lo hace el worker en el PC).
+fastapi>=0.115.5
+uvicorn[standard]>=0.32.1
+gunicorn>=23.0.0
+python-dotenv>=1.0.1

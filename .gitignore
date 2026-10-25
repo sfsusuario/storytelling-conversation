@@ -1,17 +1,22 @@
-output/
-voices_preview/
-.rvc-venv/
-.xtts-venv/
-.chatterbox-venv/
-.chatterbox-xpu-venv/
-models/
+# local (PC: estudio + worker)
+local/output/
+local/voices_preview/
+local/models/
+local/.rvc-venv/
+local/.xtts-venv/
+local/.chatterbox-venv/
+local/.chatterbox-xpu-venv/
+local/.tiktok_token.json
+local/charla_code.zip
+.venv/
 .env
-.tiktok_token.json
 __pycache__/
 *.egg-info/
 build/
-charla_code.zip
-web/node_modules/
-web/dist/
 *.mp4
-.venv/
+
+# server
+server/frontend/node_modules/
+server/frontend/dist/
+server/backend/cache/
+server/backend/logs/
