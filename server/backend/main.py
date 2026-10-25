@@ -105,7 +105,7 @@ def create_app(password: str | None = None, worker_token: str | None = None,
     secret = (os.environ.get("SECRET_KEY") or worker_token).encode()
     secure = os.environ.get("COOKIE_SECURE", "1") != "0"
     origins = [o.strip() for o in os.environ.get(
-        "WEB_ORIGINS", "https://storytelling.fierro.dev").split(",") if o.strip()]
+        "WEB_ORIGINS", "https://storyteller.fierro.dev,https://storytelling.fierro.dev").split(",") if o.strip()]
     cache = Cache(cache_dir or Path(os.environ.get("CACHE_DIR", "cache")))
     hub = Hub(offline_after)
 
