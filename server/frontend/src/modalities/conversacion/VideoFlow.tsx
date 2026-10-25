@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { lastOf, mmss, postJSON, useElapsed, useJob, type Defaults, type Turn } from "./api";
+import { lastOf, mmss, postJSON, useElapsed, useJob, usePersisted, type Defaults, type Turn } from "./api";
 import { CopyButton, ErrorBox, IdeasModal, LogPanel, Spinner, Stepper } from "./ui";
 import { apiUrl, downloadUrl } from "../../remote";
 import ShareButton from "../../ShareButton";
@@ -10,12 +10,23 @@ type Step = "topic" | "script" | "render" | "done";
 type ScriptResult = { draft: string; title: string; turns: Turn[]; social: string };
 type VideoResult = { video_url: string | null; title: string; social: string; folder: string };
 
-export default function VideoFlow({ defaults }: { defaults: Defaults }) {
-  const [step, setStep] = useState<Step>("topic");
+// the flow survives a reload: the backend keeps each job and replays its events
+const KEY = "charla.flow.";
+
+export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; prefill?: { topic: string; n: number } }) {
+  const [step, setStep] = usePersisted<Step>(`${KEY}step`, "topic");
   // ?topic=... pre-fills the topic (storytelling-studio's "Otra versión")
-  const [topic, setTopic] = useState(() => new URLSearchParams(location.search).get("topic") ?? "");
+  const urlTopic = new URLSearchParams(location.search).get("topic");
+  const [topic, setTopic] = usePersisted(`${KEY}topic`, "");
+  useEffect(() => {
+    if (urlTopic) {
+      setTopic(urlTopic);
+      setStep("topic");
+      history.replaceState(null, "", location.pathname + location.hash); // once: a reload resumes the flow
+    }
+  }, [urlTopic]); // eslint-disable-line react-hooks/exhaustive-deps
   const [demo, setDemo] = useState(false);
-  const [engine, setEngine] = useState(defaults.tts_engine);
+  const [engine, setEngine] = usePersisted(`${KEY}engine`, defaults.tts_engine);
   const [feedback, setFeedback] = useState("");
   const [showIdeas, setShowIdeas] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -27,17 +38,21 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
   const [subtitles, setSubtitles] = useState(defaults.subtitles);
   const [watermark, setWatermark] = useState(defaults.watermark);
 
-  const [scriptJob, setScriptJob] = useState<string | null>(null);
-  const [renderJob, setRenderJob] = useState<string | null>(null);
-  const [eta, setEta] = useState<number | null>(null);
-  const [auto, setAuto] = useState(false); // approve the script as soon as it is written
+  const [scriptJob, setScriptJob] = usePersisted<string | null>(`${KEY}scriptJob`, null);
+  const [renderJob, setRenderJob] = usePersisted<string | null>(`${KEY}renderJob`, null);
+  const [eta, setEta] = usePersisted<number | null>(`${KEY}eta`, null);
+  const [auto, setAuto] = usePersisted(`${KEY}auto`, false); // approve the script as soon as it is written
   const script = useJob(scriptJob);
   const render = useJob(renderJob);
 
   const scriptResult = lastOf(script.events, "result") as unknown as ScriptResult | undefined;
-  const scriptError = lastOf(script.events, "error")?.text ?? null;
+  // a job the PC no longer has (studio restarted): its stream ends with no events
+  const LOST = "Este trabajo ya no existe en el PC (se reinició el estudio). Empieza de nuevo.";
+  const scriptError = lastOf(script.events, "error")?.text
+    ?? (scriptJob && script.done && script.events.length === 0 ? LOST : null);
   const videoResult = lastOf(render.events, "result") as unknown as VideoResult | undefined;
-  const renderError = lastOf(render.events, "error")?.text ?? null;
+  const renderError = lastOf(render.events, "error")?.text
+    ?? (renderJob && render.done && render.events.length === 0 ? LOST : null);
   const rendering = step === "render" && !render.done;
   const elapsed = useElapsed(rendering);
 
@@ -129,6 +144,14 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
     setError(null);
     setAuto(false);
   };
+
+  // "Otra versión" from this modality's history: same topic, back to the start
+  useEffect(() => {
+    if (!prefill) return;
+    restart();
+    setDemo(false);
+    setTopic(prefill.topic);
+  }, [prefill]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <section>

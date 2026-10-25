@@ -33,13 +33,15 @@ export default function History({
   modalities,
   onOpen,
   onReuse,
+  only,
 }: {
   modalities: Modality[];
+  only?: string; // one modality's own history: fixed filter, no chips
   onOpen: (id: string) => void;
   onReuse: (modality: string, reuse: Reuse) => void;
 }) {
   const [runs, setRuns] = useState<Run[] | null>(null);
-  const [filter, setFilter] = useState("");
+  const [filter, setFilter] = useState(only ?? "");
   const [playing, setPlaying] = useState<Run | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [reload, setReload] = useState(0);
@@ -71,8 +73,8 @@ export default function History({
   return (
     <div className="h-wrap">
       <div className="h-chips">
-        <button className={filter === "" ? "on" : ""} onClick={() => setFilter("")}>Todos</button>
-        {modalities.map((m) => (
+        {!only && <button className={filter === "" ? "on" : ""} onClick={() => setFilter("")}>Todos</button>}
+        {!only && modalities.map((m) => (
           <button key={m.id} className={filter === m.id ? "on" : ""} onClick={() => setFilter(m.id)}>
             {m.icon} {m.name}
           </button>
