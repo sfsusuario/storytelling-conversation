@@ -48,8 +48,8 @@ export default function History({
   useEffect(() => {
     setRuns(null);
     fetch(`/api/history${filter ? `?modality=${filter}` : ""}`)
-      .then((r) => r.json() as Promise<Run[]>)
-      .then(setRuns)
+      .then((r) => r.json())
+      .then((body) => setRuns(Array.isArray(body) ? (body as Run[]) : []))
       .catch(() => setRuns([]));
   }, [filter, reload]);
 

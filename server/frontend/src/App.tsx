@@ -29,12 +29,20 @@ export default function App() {
 
   useEffect(() => {
     fetch("/api/modalities")
-      .then((r) => r.json() as Promise<Modality[]>)
+      .then(async (r) => {
+        const body = await r.json().catch(() => null);
+        // e.g. 503 from the public server when the PC (worker) is off
+        if (!r.ok || !Array.isArray(body)) throw new Error(body?.detail ?? `Error ${r.status}`);
+        return body as Modality[];
+      })
       .then((list) => {
         setModalities(list);
         setTabState((t) => (t === HISTORY || list.some((m) => m.id === t) ? t : list[0]?.id ?? HISTORY));
       })
-      .catch(() => setError("No se pudo contactar con el servidor del estudio."));
+      .catch((e: Error) => {
+        setError(e.message.startsWith("Failed") ? "No se pudo contactar con el servidor del estudio." : e.message);
+        setTabState(HISTORY); // the server's copy of the history still works with the PC off
+      });
   }, []);
 
   useEffect(() => {
