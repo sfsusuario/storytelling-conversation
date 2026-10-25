@@ -24,7 +24,6 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
   const [model, setModel] = useState(defaults.text_model);
   const [subtitles, setSubtitles] = useState(defaults.subtitles);
   const [watermark, setWatermark] = useState(defaults.watermark);
-  const [bgVolume, setBgVolume] = useState(defaults.bg_volume);
 
   const [scriptJob, setScriptJob] = useState<string | null>(null);
   const [renderJob, setRenderJob] = useState<string | null>(null);
@@ -44,7 +43,6 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
     tts_engine: engine,
     subtitles,
     watermark,
-    bg_volume: bgVolume,
   });
 
   const writeScript = async (withFeedback = "") => {
@@ -203,11 +201,6 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
               <label>
                 Marca de agua
                 <input value={watermark} onChange={(e) => setWatermark(e.target.value)} />
-              </label>
-              <label>
-                Ambiente del fondo: {bgVolume.toFixed(2)}
-                <input type="range" min={0} max={0.6} step={0.01} value={bgVolume}
-                  onChange={(e) => setBgVolume(Number(e.target.value))} />
               </label>
               <label className="check">
                 <input type="checkbox" checked={subtitles} onChange={(e) => setSubtitles(e.target.checked)} />
