@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import gc
 import hashlib
+import traceback
 from pathlib import Path
 from typing import Callable
 
@@ -138,6 +139,10 @@ def generate_local_images(provider: str, pending: list[tuple[Scene, Path]],
     if on_step:
         on_step(None, 0, 0, f"cargando {provider}")
     from .image_gen import ImageGenError
+    # a model a previous failed run left in reference cycles would double the use
+    gc.collect()
+    if device == "xpu":
+        torch.xpu.empty_cache()
     try:
         pipe = (_load_flux if provider == "flux-kontext" else _load_sdxl)(torch, device)
     except ImportError as e:
@@ -176,6 +181,11 @@ def generate_local_images(provider: str, pending: list[tuple[Scene, Path]],
             log(f"  image: {out.name} ({scene.persona.name})")
             if on_image:
                 on_image(scene)
+    except BaseException as exc:
+        # the traceback's diffusers frames hold the pipeline: clear them so it is
+        # freed here, not after a retry has already loaded a second copy (XPU OOM)
+        traceback.clear_frames(exc.__traceback__)
+        raise
     finally:
         del pipe
         gc.collect()
