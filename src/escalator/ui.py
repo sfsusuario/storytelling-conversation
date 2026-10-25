@@ -224,24 +224,22 @@ def build_app():
                     subtitles = gr.Checkbox(
                         value=True, label="Subtítulos de la narración",
                         info="Incrusta el texto narrado en cada escena")
+                    # background music removed (the pipeline forces 0);
+                    # kept hidden so the event wiring stays unchanged
                     music_enabled = gr.Checkbox(
-                        value=True, label="Añadir música de fondo",
-                        info="Mezcla una banda sonora acorde al set bajo la "
-                             "narración")
-                    with gr.Row():
+                        value=False, visible=False, label="Añadir música de fondo")
+                    with gr.Row(visible=False):
                         music_volume = gr.Slider(
-                            0.0, 0.6, value=DEFAULT_MUSIC_VOLUME, step=0.01,
+                            0.0, 0.6, value=0.0, step=0.01,
                             label="Volumen de la música", scale=3)
                         music_btn = gr.Button("🔊 Probar música", scale=1)
                     music_source = gr.Dropdown(
                         ["track (pista CC-BY de incompetech)",
                          "synth (ambiente sintetizado, nunca bloqueado)"],
                         value="track (pista CC-BY de incompetech)",
-                        label="Fuente de la música",
-                        info="Si TikTok bloquea una pista, cambia a synth o "
-                             "avísame para elegir otra banda sonora")
+                        label="Fuente de la música", visible=False)
                     music_preview = gr.Audio(label="Muestra del ambiente",
-                                             visible=True, interactive=False)
+                                             visible=False, interactive=False)
 
                 with gr.Accordion("Avanzado", open=False):
                     text_provider = gr.Dropdown(

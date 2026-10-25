@@ -354,7 +354,9 @@ def continue_pipeline(draft: ScriptDraft,
     log(f"[3/4] timeline: {timeline.total_duration:.2f}s total, "
         f"{len(turns)} turns")
 
-    # Stage 4: render (chromakey over the background + concat + ambience)
+    # Stage 4: render (chromakey over the background + concat). Background
+    # ambience removed from the studio: only the dialogue is heard.
+    options.bg_volume = 0.0
     log("[4/4] render")
     final_path = render_all(ffmpeg, ffprobe, timeline, background,
                             output_dir / "03_clips",

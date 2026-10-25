@@ -571,14 +571,16 @@ def build_app():
                              "(modo draft): lo publicas desde la app pegando "
                              "la caption de 📣. Requiere login previo: "
                              "python -m charla.tiktok --login")
+                    # background ambience removed (the pipeline forces 0);
+                    # kept hidden so the event wiring stays unchanged
                     bg_enabled = gr.Checkbox(
-                        value=DEFAULT_BG_VOLUME > 0,
+                        value=False, visible=False,
                         label="Audio ambiente del fondo",
                         info="Mezcla el sonido del video de fondo (uno de "
                              f"{BACKGROUNDS_DIR}/, fijo para cada tema) bajo "
                              "las voces; se omite si el fondo no tiene audio")
                     bg_volume = gr.Slider(
-                        0.0, 0.6, value=DEFAULT_BG_VOLUME or 0.15, step=0.01,
+                        0.0, 0.6, value=0.0, step=0.01, visible=False,
                         label="Volumen del ambiente")
                     from .chatterbox import chatterbox_available
                     from .rvc import rvc_available

@@ -204,6 +204,9 @@ def run_pipeline(options: PipelineOptions,
     # still block them on some platforms.
     music_source = None
     music_desc = "none"
+    # Background music removed from the studio: only the narration is heard
+    # (also on regenerate, whose old manifests may still carry a volume).
+    options.music_volume = 0.0
     if options.music_volume > 0 and not options.dry_run:
         if options.music_source == "track":
             from .music import attribution as music_attribution, music_file

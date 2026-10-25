@@ -183,9 +183,9 @@ export function MotionPicker({ opts, setOpt, system }: Pick<PanelProps, "opts" |
 
 export function VoiceMusicPanel({ opts, setOpt, app }: PanelProps) {
   const voices = opts.tts_provider === "kokoro" ? app.voices.kokoro : app.voices.edge;
-  const summary = [opts.voice, opts.music_volume > 0 ? `música ${Math.round(opts.music_volume * 100)}%` : "sin música", opts.subtitles ? "subtítulos" : "sin subtítulos"].join(" · ");
+  const summary = [opts.voice, opts.subtitles ? "subtítulos" : "sin subtítulos"].join(" · ");
   return (
-    <Section title="Voz y música" summary={summary}>
+    <Section title="Voz" summary={summary}>
       <Field label="Voz del narrador">
         {(id) => (
           <div className="flex gap-2">
@@ -198,43 +198,6 @@ export function VoiceMusicPanel({ opts, setOpt, app }: PanelProps) {
         )}
       </Field>
       <Toggle checked={opts.subtitles} onChange={(v) => setOpt("subtitles", v)} label="Subtítulos" />
-      <Toggle checked={opts.music_volume > 0} onChange={(v) => setOpt("music_volume", v ? 0.25 : 0)} label="Música de fondo" />
-      {opts.music_volume > 0 && (
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label={`Volumen: ${Math.round(opts.music_volume * 100)}%`}>
-            {(id) => (
-              <input
-                id={id}
-                type="range"
-                min={0.01}
-                max={0.6}
-                step={0.01}
-                value={opts.music_volume}
-                onChange={(e) => setOpt("music_volume", Number(e.target.value))}
-                className="w-full accent-orange-600"
-              />
-            )}
-          </Field>
-          <Field label="Fuente" hint="synth funciona sin internet y nunca la bloquean por copyright">
-            {(id) => (
-              <div className="flex gap-2">
-                <Select
-                  id={id}
-                  value={opts.music_source}
-                  onChange={(v) => setOpt("music_source", v)}
-                  options={[
-                    { value: "track", label: "Pista CC-BY" },
-                    { value: "synth", label: "Sintetizada" },
-                  ]}
-                />
-                {app.style_sets.some((s) => s.name === opts.style_set) && (
-                  <PlayButton label="Escuchar música" src={api.musicPreviewUrl(opts.style_set, opts.music_source)} />
-                )}
-              </div>
-            )}
-          </Field>
-        </div>
-      )}
     </Section>
   );
 }
