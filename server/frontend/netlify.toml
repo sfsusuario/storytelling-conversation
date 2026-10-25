@@ -1,0 +1,17 @@
+# Netlify: storytelling.fierro.dev
+# En Netlify: Base directory = server/frontend (el resto lo lee de aquí).
+[build]
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+  # API pública (server/backend). La web la llama directo, con CORS y cookie:
+  # el proxy de Netlify corta a los 26 s y rompería el progreso en vivo y los videos.
+  VITE_API_BASE = "https://api.storyteller.fierro.dev"
+
+# SPA: cualquier ruta sirve index.html
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

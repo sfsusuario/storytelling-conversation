@@ -1,0 +1,25 @@
+[Unit]
+Description=Storytelling Studio API (relay hacia el worker del PC)
+After=network.target
+
+[Service]
+Type=simple
+User=__SERVICE_USER__
+Group=__SERVICE_USER__
+UMask=0002
+WorkingDirectory=__PROJECT_DIR__
+EnvironmentFile=__PROJECT_DIR__/.env
+# --workers 1: la cola de tareas y las respuestas en curso viven en memoria de un
+# solo proceso. Con 2 el worker y el navegador podrían caer en procesos distintos.
+ExecStart=__PROJECT_DIR__/.venv/bin/gunicorn main:app \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --workers 1 \
+    --bind 127.0.0.1:8006 \
+    --timeout 0 \
+    --access-logfile __PROJECT_DIR__/logs/access.log \
+    --error-logfile __PROJECT_DIR__/logs/error.log
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

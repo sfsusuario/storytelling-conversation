@@ -1,0 +1,124 @@
+.charla {
+  --bg: #0f1115;
+  --panel: #171a21;
+  --panel-2: #1f232c;
+  --border: #2a2f3a;
+  --text: #e8eaf0;
+  --muted: #9aa3b2;
+  --green: #4ade80;
+  --green-dim: #1f3b2a;
+  --rick: #93c5fd;
+  --morty: #fcd34d;
+  --red: #f87171;
+  font-family: system-ui, "Segoe UI", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+* { box-sizing: border-box; }
+body { margin: 0; }
+.charla .app { max-width: 980px; margin: 0 auto; padding: 16px; }
+.charla h1 { font-size: 1.4rem; margin: 0; }
+.charla h2 { margin: 0; }
+.charla .muted { color: var(--muted); }
+.charla .small { font-size: 0.85rem; }
+.charla .spacer { flex: 1; }
+
+/* header + tabs */
+.charla .top { display: flex; align-items: center; gap: 16px; margin-bottom: 16px; flex-wrap: wrap; }
+.charla .top nav { display: flex; gap: 4px; background: var(--panel); padding: 4px; border-radius: 10px; }
+.charla .top nav button { background: none; border: 0; color: var(--muted); padding: 8px 14px; border-radius: 8px; cursor: pointer; font: inherit; }
+.charla .top nav button.on { background: var(--panel-2); color: var(--text); }
+
+/* stepper */
+.charla .stepper { display: flex; list-style: none; padding: 0; margin: 0 0 16px; gap: 6px; }
+.charla .stepper li { flex: 1; display: flex; align-items: center; gap: 8px; padding: 10px; border-radius: 10px; background: var(--panel); color: var(--muted); font-size: 0.9rem; }
+.charla .stepper .dot { width: 24px; height: 24px; border-radius: 50%; display: grid; place-items: center; background: var(--panel-2); font-size: 0.8rem; }
+.charla .stepper li.active { color: var(--text); outline: 1px solid var(--green); }
+.charla .stepper li.active .dot { background: var(--green); color: #000; }
+.charla .stepper li.done .dot { background: var(--green-dim); color: var(--green); }
+
+/* cards + controls */
+.charla .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.charla .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.charla .actions { display: flex; justify-content: flex-end; gap: 10px; flex-wrap: wrap; }
+.charla .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; }
+.charla .grid label, .charla label { display: flex; flex-direction: column; gap: 4px; font-size: 0.9rem; color: var(--muted); }
+.charla label.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+.charla .big-label { font-size: 1.05rem; color: var(--text); flex-direction: row; gap: 6px; }
+.charla textarea, .charla input, .charla select { background: var(--panel-2); color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font: inherit; }
+.charla textarea { width: 100%; resize: vertical; }
+.charla textarea.topic { font-size: 1.15rem; }
+.charla input[type="range"] { padding: 0; }
+.charla button, .charla a.button { font: inherit; border-radius: 8px; padding: 8px 14px; cursor: pointer; border: 1px solid var(--border); text-decoration: none; display: inline-block; }
+.charla button:disabled { opacity: 0.45; cursor: default; }
+.charla .primary { background: var(--green); color: #052e16; border-color: var(--green); font-weight: 600; }
+.charla .big { padding: 12px 22px; font-size: 1.05rem; }
+.charla .ghost { background: var(--panel-2); color: var(--text); }
+.charla .segmented { display: inline-flex; background: var(--panel-2); border-radius: 8px; padding: 3px; gap: 3px; }
+.charla .segmented button { border: 0; background: none; color: var(--muted); padding: 6px 10px; }
+.charla .segmented button.on { background: var(--panel); color: var(--text); outline: 1px solid var(--border); }
+.charla details.settings, .charla details.log { background: var(--panel-2); border-radius: 10px; padding: 8px 12px; }
+.charla details summary { cursor: pointer; color: var(--muted); }
+.charla details.settings[open] .grid { margin-top: 10px; }
+.charla details.log pre { max-height: 240px; overflow: auto; font-size: 0.8rem; white-space: pre-wrap; margin: 8px 0 0; }
+.charla .error { background: #3b1d1d; color: #fecaca; border: 1px solid #7f1d1d; padding: 10px 12px; border-radius: 10px; }
+.charla .hint { color: var(--morty); font-size: 0.85rem; margin: 0; }
+
+/* script review */
+.charla .title { font-size: 1.2rem; }
+.charla .chat { display: flex; flex-direction: column; gap: 8px; max-height: 50vh; overflow: auto; }
+.charla .bubble { max-width: 80%; padding: 10px 12px; border-radius: 12px; background: var(--panel-2); line-height: 1.4; }
+.charla .bubble .who { display: block; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px; }
+.charla .bubble.rick { align-self: flex-end; border-top-right-radius: 2px; }
+.charla .bubble.rick .who { color: var(--rick); }
+.charla .bubble.morty { align-self: flex-start; border-top-left-radius: 2px; }
+.charla .bubble.morty .who { color: var(--morty); }
+
+/* progress */
+.charla .bar { height: 12px; background: var(--panel-2); border-radius: 6px; overflow: hidden; }
+.charla .bar > div { height: 100%; background: var(--green); transition: width 0.4s; }
+.charla .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.charla .chip { width: 64px; height: 56px; border-radius: 10px; background: var(--panel-2); border: 2px solid var(--border); display: flex; flex-direction: column; align-items: center; justify-content: center; font-size: 0.85rem; transition: all 0.3s; }
+.charla .chip.rick { border-bottom-color: var(--rick); }
+.charla .chip.morty { border-bottom-color: var(--morty); }
+.charla .chip.audio { background: #1e293b; }
+.charla .chip.clip { background: var(--green-dim); border-color: var(--green); }
+.charla .legend { font-size: 0.8rem; color: var(--muted); margin: 0; }
+.charla .spinner-row { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.charla .spinner { width: 18px; height: 18px; border: 3px solid var(--panel-2); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; display: inline-block; vertical-align: middle; }
+.charla .spinner.small { width: 12px; height: 12px; border-width: 2px; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* result */
+.charla .result { display: flex; gap: 18px; flex-wrap: wrap; }
+.charla .player { width: 300px; max-width: 100%; aspect-ratio: 9 / 16; background: #000; border-radius: 12px; }
+.charla .meta { flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 10px; }
+.charla pre.social { background: var(--panel-2); padding: 10px; border-radius: 8px; white-space: pre-wrap; margin: 0; font-family: inherit; }
+
+/* batch */
+.charla .cards { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.charla .vcard { display: flex; gap: 12px; align-items: center; background: var(--panel-2); border-radius: 10px; padding: 10px 12px; border-left: 4px solid var(--border); }
+.charla .vcard.running { border-left-color: var(--morty); }
+.charla .vcard.ok { border-left-color: var(--green); }
+.charla .vcard.fail { border-left-color: var(--red); }
+.charla .vcard .num { font-weight: 700; color: var(--muted); }
+.charla .vcard a { color: var(--green); }
+
+/* modal */
+.charla .modal-backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.6); display: grid; place-items: center; padding: 16px; z-index: 10; }
+.charla .modal { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; width: min(640px, 100%); max-height: 90vh; overflow: auto; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+.charla .modal header, .charla .modal footer { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.charla .ideas { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.charla .idea { width: 100%; text-align: left; background: var(--panel-2); color: var(--text); }
+.charla .idea.on { outline: 2px solid var(--green); }
+
+@media (max-width: 640px) {
+  .charla .stepper li { font-size: 0; justify-content: center; }
+  .charla .stepper .dot { font-size: 0.8rem; }
+}
+
+/* Tailwind's preflight (loaded for Escalera) resets these globally */
+.charla h1 { font-weight: 700; }
+.charla h2 { font-size: 1.25rem; font-weight: 700; }
+.charla .card { box-shadow: none; }
+.charla p { margin: 0.4em 0; }
