@@ -29,8 +29,8 @@ teléfono --HTTPS--> web (Netlify) --> API (servidor) <--long-poll-- worker (PC)
 ## Uso diario (PC)
 
 ```powershell
+.\run-worker.ps1     # (desde la raíz) estudio local + conexión con la web pública
 cd local
-.\run-worker.ps1     # estudio local + conexión con la web pública
 .\run-ui.ps1         # solo el estudio local en http://127.0.0.1:7880 (sin web pública)
 ```
 
