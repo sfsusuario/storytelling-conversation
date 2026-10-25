@@ -10,7 +10,8 @@ type VideoResult = { video_url: string | null; title: string; social: string; fo
 
 export default function VideoFlow({ defaults }: { defaults: Defaults }) {
   const [step, setStep] = useState<Step>("topic");
-  const [topic, setTopic] = useState("");
+  // ?topic=... pre-fills the topic (storytelling-studio's "Otra versión")
+  const [topic, setTopic] = useState(() => new URLSearchParams(location.search).get("topic") ?? "");
   const [demo, setDemo] = useState(false);
   const [engine, setEngine] = useState(defaults.tts_engine);
   const [feedback, setFeedback] = useState("");
@@ -184,7 +185,7 @@ export default function VideoFlow({ defaults }: { defaults: Defaults }) {
                   if (e.target.value === "ollama") setModel(defaults.ollama_default);
                   else setModel(defaults.text_model);
                 }}>
-                  <option value="auto">auto (Claude → Gemini → Ollama)</option>
+                  <option value="auto">auto (Ollama → Claude → Gemini)</option>
                   <option value="claude">Claude</option>
                   <option value="gemini">Gemini</option>
                   <option value="ollama">Ollama (local)</option>

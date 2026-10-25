@@ -335,7 +335,8 @@ para comparar a oído.
 
 ### Ollama (guion local)
 
-`--text-provider ollama` (o `auto` sin claves de API) escribe el guion con un
+`--text-provider ollama` (o `auto`, que prueba primero Ollama si está corriendo
+con el modelo descargado, luego Claude y luego Gemini) escribe el guion con un
 modelo local vía `OLLAMA_HOST` (por defecto `127.0.0.1:11434`) y la misma
 salida estructurada que Claude/Gemini. Si el guion sale largo (más de 160
 palabras) se reintenta una vez pidiéndole acortarlo. Probado en el mismo

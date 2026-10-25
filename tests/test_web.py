@@ -4,6 +4,7 @@ Run from the repo root (needs characters/, backgrounds/ and ffmpeg):
     python -m pytest tests/test_web.py      or      python tests/test_web.py
 """
 import json
+from pathlib import Path
 
 from fastapi.testclient import TestClient
 
@@ -29,6 +30,17 @@ def test_classify():
     # batch relays pipeline lines indented by 2
     assert classify("    chatterbox: turn_01.cbx.wav (morty)", indent=2)["turn"] == 1
     assert classify("  pingpong: x.mp4")["kind"] == "log"
+
+
+def test_history_delete():
+    client = TestClient(create_app())
+    run = Path("output") / "zz-test-delete-0000"
+    run.mkdir(parents=True, exist_ok=True)
+    (run / "final.mp4").write_bytes(b"x")
+    for bad in ("..%5Cx", "_lote", "zz-nope"):  # traversal, internal folder, unknown
+        assert client.delete(f"/api/history/{bad}").status_code in (400, 404)
+    assert client.delete(f"/api/history/{run.name}").json() == {"deleted": run.name}
+    assert not run.exists()
 
 
 def test_demo_flow():
@@ -58,5 +70,6 @@ def test_demo_flow():
 
 if __name__ == "__main__":
     test_classify()
+    test_history_delete()
     test_demo_flow()
     print("ok")

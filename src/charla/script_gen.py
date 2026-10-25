@@ -17,7 +17,7 @@ from .config import (DEFAULT_GEMINI_TEXT_MODEL, DEFAULT_LANGUAGE,
                      OLLAMA_THINK, OLLAMA_TIMEOUT, SCRIPT_USER_TEMPLATE,
                      build_script_system_prompt, has_secret)
 
-PROVIDERS = ("claude", "gemini", "ollama")
+PROVIDERS = ("ollama", "claude", "gemini")   # auto order
 
 # Spoken-word budget of the whole dialogue (the prompt asks for 110-140,
 # which keeps the video under a minute); above WORD_WARN we warn, and the
@@ -113,6 +113,14 @@ def _tag(name: str) -> str:
     return name if ":" in name else f"{name}:latest"
 
 
+def _ollama_has(model: str) -> bool:
+    """Ollama is running and `model` is pulled (auto mode only picks a
+    local model that can actually answer)."""
+    tags = _ollama_tags()
+    return bool(tags) and _tag(model) in {
+        _tag(m.get("name") or m.get("model") or "") for m in tags}
+
+
 # ---------------------------------------------------------------------------
 # Provider / model resolution
 # ---------------------------------------------------------------------------
@@ -152,19 +160,18 @@ def candidate_backends(provider: str, model: str | None
 def resolve_text_backend(provider: str, model: str | None) -> tuple[str, str]:
     """Return (provider, model) actually used for script generation.
 
-    provider: "auto" | "claude" | "gemini" | "ollama". Auto order: Claude
-    key -> Google key -> a running Ollama server. Placeholder keys copied
-    from .env.example don't count.
+    provider: "auto" | "claude" | "gemini" | "ollama". Auto order (same as
+    the escalator modality): a running Ollama with the model installed ->
+    Claude key -> Google key. Placeholder keys copied from .env.example
+    don't count.
     """
     if provider == "auto":
-        if _is_ollama_name(model):
+        if _is_ollama_name(model) or _ollama_has(model_for("ollama", model)):
             provider = "ollama"
         elif _have_claude_key():
             provider = "claude"
         elif _have_google_key():
             provider = "gemini"
-        elif ollama_reachable():
-            provider = "ollama"
         else:
             raise ScriptGenError(
                 "No text provider available. Set one of:\n"

@@ -16,7 +16,7 @@ from .config import (BACKGROUNDS_DIR, CHARACTERS, DEFAULT_BATCH_THEME,
                      DEFAULT_TTS_ENGINE, DEFAULT_WATERMARK, DEFAULT_WIDTH,
                      LANGUAGE_NAMES, PipelineOptions)
 
-_AUTO_PROVIDER = "auto (Claude → Gemini → Ollama)"
+_AUTO_PROVIDER = "auto (Ollama → Claude → Gemini)"
 # Families that abort with "token repeat limit" on the long script prompt
 # on Intel iGPUs (measured with Ollama 0.40); flagged in the model list.
 _OLLAMA_FLAKY = ("llama3.1", "qwen3")

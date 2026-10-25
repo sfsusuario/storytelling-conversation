@@ -12,6 +12,7 @@ import asyncio
 import dataclasses
 import json
 import re
+import shutil
 import sys
 import threading
 import uuid
@@ -290,6 +291,20 @@ def create_app() -> FastAPI:
             raise HTTPException(404, "Lote desconocido")
         job.stop.set()
         return {"ok": True}
+
+    @app.delete("/api/history/{name}")
+    def history_delete(name: str):
+        """Remove one finished run folder (same contract as the escalator
+        modality, used by storytelling-studio's shared history)."""
+        folder = OUTPUT / name
+        # name comes from the client: only a plain run folder name
+        if (not name or name.startswith((".", "_")) or Path(name).name != name
+                or folder.resolve().parent != OUTPUT.resolve()):
+            raise HTTPException(400, f"invalid run name: {name!r}")
+        if not (folder / "final.mp4").is_file():
+            raise HTTPException(404, "unknown video")
+        shutil.rmtree(folder)
+        return {"deleted": name}
 
     @app.get("/api/jobs/{job_id}/events")
     async def job_events(job_id: str, start: int = 0):

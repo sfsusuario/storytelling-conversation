@@ -119,10 +119,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--text-provider",
                    choices=["auto", "claude", "gemini", "ollama"],
                    default="auto",
-                   help="Who writes the script: auto (default: Claude if "
-                        "ANTHROPIC_API_KEY is set, else Gemini if "
-                        "GOOGLE_API_KEY is set, else a running Ollama), "
-                        "claude, gemini, or ollama (local model, no key)")
+                   help="Who writes the script: auto (default: a running "
+                        "Ollama with the model pulled, else Claude if "
+                        "ANTHROPIC_API_KEY is set, else Gemini), claude, "
+                        "gemini, or ollama (local model, no key)")
     p.add_argument("--text-model", default=DEFAULT_TEXT_MODEL,
                    help="Model for the script (swapped to the provider's "
                         "default when it belongs to another one; Ollama "
