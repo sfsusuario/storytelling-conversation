@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Badge, Field, PlayButton, Select, Toggle } from "../escalera/components/ui";
 import { MOTION_CHOICES, MotionPicker, PhotoPicker, Section, type Upload } from "../escalera/components/Wizard";
 import { api } from "./api";
+import { SourcePicker } from "./SourcePicker";
 import type { AppOptions, StoryOptions, SystemStatus } from "./types";
 
 type SetOpt = <K extends keyof StoryOptions>(key: K, value: StoryOptions[K]) => void;
@@ -32,6 +34,7 @@ export function StoryForm({
   onClear,
   error,
   onStart,
+  onPreview,
 }: {
   app: AppOptions;
   opts: StoryOptions;
@@ -42,10 +45,14 @@ export function StoryForm({
   onClear: () => void;
   error: string | null;
   onStart: () => void;
+  /** write the script only, to review it before images and voice */
+  onPreview: () => void;
 }) {
+  const [picker, setPicker] = useState(false);
   const tone = app.tones.find((t) => t.id === opts.tone) ?? app.tones[0];
   const voices = opts.tts_provider === "kokoro" ? app.voices.kokoro : app.voices.edge;
-  const ready = Boolean(opts.premise.trim());
+  const ready = Boolean(opts.premise.trim() || opts.source);
+  const sourceSub = /\/r\/([^/]+)\//.exec(opts.source)?.[1];
   const language = app.languages.find((l) => l.code === opts.language)?.name ?? opts.language;
   // LivePortrait animates a real face: only offered with a photo
   const motionChoices = upload ? MOTION_CHOICES : MOTION_CHOICES.filter((m) => m.value !== "liveportrait");
@@ -75,7 +82,7 @@ export function StoryForm({
           </p>
         </div>
         <div className="flex flex-col gap-5">
-          <Field label="¿De qué va el cuento?">
+          <Field label={opts.source ? "Historia real (título; puedes añadir indicaciones)" : "¿De qué va el cuento?"}>
             {(id) => (
               <>
                 <textarea
@@ -87,16 +94,41 @@ export function StoryForm({
                   value={opts.premise}
                   onChange={(e) => setOpt("premise", e.target.value)}
                 />
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  {(EXAMPLES[opts.tone] ?? []).map((p) => (
-                    <button key={p} type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setOpt("premise", p)}>
-                      {p}
-                    </button>
-                  ))}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                  <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setPicker(true)}>
+                    📰 Historia real de Reddit
+                  </button>
+                  {opts.source ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs text-orange-900 dark:bg-orange-950/50 dark:text-orange-200">
+                      Basado en r/{sourceSub}
+                      <button type="button" className="ml-1 font-bold" aria-label="Quitar la historia real" onClick={() => setOpt("source", "")}>
+                        ✕
+                      </button>
+                    </span>
+                  ) : (
+                    (EXAMPLES[opts.tone] ?? []).map((p) => (
+                      <button key={p} type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setOpt("premise", p)}>
+                        {p}
+                      </button>
+                    ))
+                  )}
                 </div>
               </>
             )}
           </Field>
+          {picker && (
+            <SourcePicker
+              onClose={() => setPicker(false)}
+              onPick={(s, preset) => {
+                setOpt("source", s.url);
+                setOpt("premise", s.title);
+                if (preset) {
+                  setOpt("tone", preset.tone);
+                  setOpt("genre", preset.genre);
+                }
+              }}
+            />
+          )}
           <fieldset>
             <legend className="label">Tono</legend>
             <div className="grid grid-cols-2 gap-1 rounded-lg bg-stone-100 p-1 dark:bg-stone-800" role="radiogroup">
@@ -138,10 +170,15 @@ export function StoryForm({
                 {error}
               </p>
             )}
-            <button type="button" className="btn-primary w-full py-3 text-base" disabled={!ready} onClick={onStart}>
-              📖 Crear cuento
-            </button>
-            {!ready && <p className="hint text-center">Escribe de qué va el cuento</p>}
+            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
+              <button type="button" className="btn-primary w-full py-3 text-base" disabled={!ready} onClick={onStart}>
+                📖 Crear cuento
+              </button>
+              <button type="button" className="btn-ghost py-3" disabled={!ready} onClick={onPreview} title="Escribe el guion y párate a revisarlo antes de las imágenes y la voz">
+                📝 Solo el guion
+              </button>
+            </div>
+            {!ready && <p className="hint text-center">Escribe de qué va el cuento o elige una historia real</p>}
           </div>
         </div>
       </div>

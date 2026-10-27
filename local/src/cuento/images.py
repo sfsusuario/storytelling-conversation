@@ -17,12 +17,15 @@ from escalator.image_gen import ImageGenError, generate_test_images, resolve_ima
 from escalator.image_local import (DRIVER_HINT, INSTALL_HINT, SDXL_REPO, _device,
                                    local_available, scene_seed)
 from escalator.models import Scene
+from escalator.renderer import _drawtext_escape
 
-from .config import NEGATIVE
+from .config import CREDITS_TITLE, NEGATIVE
 
 SIZE = (832, 1216)    # SDXL 9:16 bucket; the renderer crops it to the frame
 STEPS, CFG = 30, 7.0
 PLACEHOLDER_COLORS = ["3b5bdb", "2b8a3e", "e67700", "862e9c", "c92a2a", "0b7285", "5f3dc4", "a61e4d"]
+REDDIT_ICON = Path(__file__).resolve().parents[2] / "assets" / "reddit-icon.png"
+_FONT = "fontfile='C\\:/Windows/Fonts/arialbd.ttf'"   # the renderer's font
 
 
 def resolve_story_image_provider(provider: str, has_photo: bool) -> str:
@@ -138,6 +141,43 @@ def generate_story_images(scenes: list[Scene], images_dir: Path, seed: int | Non
         gc.collect()
         if device == "xpu":
             torch.xpu.empty_cache()
+
+
+def credits_card(out: Path, author: str, subreddit: str, ffmpeg: str,
+                 width: int, height: int) -> Path:
+    """End card of a Reddit story: icon, CREDITS_TITLE, u/author, r/subreddit,
+    drawn by ffmpeg at the video size (no PIL). Reused when it exists."""
+    if out.exists() and out.stat().st_size > 0:
+        return out
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    def line(text: str, y: str, div: int, color: str = "white") -> str:
+        return (f"drawtext=text='{_drawtext_escape(text)}':{_FONT}:fontsize=h/{div}:"
+                f"fontcolor={color}:x=(w-text_w)/2:y={y}:expansion=none")
+
+    texts = ",".join([line(CREDITS_TITLE, "h*0.50", 18), line(f"u/{author}", "h*0.58", 26, "#ff4500"),
+                      line(f"r/{subreddit}", "h*0.63", 34, "#d7dadc")])
+    inputs = ["-f", "lavfi", "-i", f"color=c=0x1a1a1b:s={width}x{height}:d=1"]
+    if REDDIT_ICON.is_file():
+        inputs += ["-i", str(REDDIT_ICON)]
+        graph = (f"[1:v]scale={int(height * 0.16)}:-1[icon];"
+                 f"[0:v][icon]overlay=(W-w)/2:H*0.30[bg];[bg]{texts}")
+    else:
+        graph = f"[0:v]{texts}"
+    tmp = out.with_suffix(".tmp.png")
+    subprocess.run([ffmpeg, "-y", "-nostdin", "-loglevel", "error", *inputs, "-filter_complex", graph,
+                    "-frames:v", "1", str(tmp)], check=True, stdin=subprocess.DEVNULL)
+    tmp.replace(out)
+    return out
+
+
+def silence_wav(out: Path, seconds: float, ffmpeg: str) -> Path:
+    if not (out.exists() and out.stat().st_size > 0):
+        out.parent.mkdir(parents=True, exist_ok=True)
+        subprocess.run([ffmpeg, "-y", "-nostdin", "-loglevel", "error", "-f", "lavfi", "-i",
+                        "anullsrc=r=44100:cl=stereo", "-t", f"{seconds:.3f}", str(out)],
+                       check=True, stdin=subprocess.DEVNULL)
+    return out
 
 
 def placeholder_images(scenes: list[Scene], images_dir: Path, ffmpeg: str,

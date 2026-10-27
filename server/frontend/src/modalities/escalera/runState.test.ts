@@ -51,6 +51,18 @@ describe("runReducer", () => {
     expect(d["images:flux-kontext"]).toBeCloseTo(3.9);
   });
 
+  it("keeps the written story (Cuento) and a textless done as a preview", () => {
+    const s = fold([
+      ...events,
+      { ts: 5.5, type: "story", title: "T", outline: "O", protagonist: "P", source: { url: "u", author: "a", subreddit: "s" } },
+      { ts: 6, type: "done", video_url: null, social: "hi", output_dir: "o", duration: 0 },
+    ]);
+    expect(s.story?.title).toBe("T");
+    expect(s.story?.source?.author).toBe("a");
+    expect(s.status).toBe("done");
+    expect(s.result?.video).toBeNull();
+  });
+
   it("marks errors and cancellations", () => {
     expect(fold([...events, { ts: 7, type: "error", message: "boom", kind: "X" }]).error).toBe("boom");
     expect(fold([...events, { ts: 7, type: "cancelled" }]).status).toBe("cancelled");

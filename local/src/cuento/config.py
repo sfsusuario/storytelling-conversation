@@ -50,6 +50,7 @@ STYLE_PRESETS = {
 }
 IMAGE_PROVIDERS = ["auto", "sdxl", "flux-kontext"]   # sdxl: no photo; flux-kontext: with photo
 NEGATIVE = SDXL_NEGATIVE + ", text, letters, caption, signature"
+CREDITS_TITLE = "Historias de Reddit"   # end card of a story taken from Reddit
 
 
 def default_style(tone: str, genre: str) -> str:
@@ -64,7 +65,9 @@ def style_fragment(style: str) -> str:
 
 @dataclass
 class StoryOptions:
-    premise: str = ""                    # required
+    premise: str = ""                    # required unless source is set
+    source: str = ""                     # Reddit post URL the story adapts (optional)
+    preview: bool = False                # stop after the text: review the script first
     tone: str = "infantil"               # infantil | general
     genre: str = "aventura"              # one of TONES[tone]
     style: str = "auto"                  # auto | STYLE_PRESETS id
@@ -102,7 +105,10 @@ CLIENT_OPTIONS = {f.name for f in dataclasses.fields(StoryOptions)} - {
 
 def validate(options: StoryOptions) -> None:
     """ValueError for anything the form (or a hand-made request) got wrong."""
-    if not options.premise.strip():
+    from .sources import valid_url  # sources imports this module
+    if options.source and not valid_url(options.source):
+        raise ValueError("source must be a reddit.com post URL")
+    if not options.premise.strip() and not options.source:
         raise ValueError("premise must not be empty")
     if options.tone not in TONES:
         raise ValueError(f"tone must be one of {sorted(TONES)}")

@@ -37,6 +37,8 @@ export interface RunState {
   /** Stage-wide work without a scene, e.g. loading a model. */
   loading: Work | null;
   result: { video: string | null; social: string; duration: number } | null;
+  /** Cuento: the written story (title, outline, real source if any). */
+  story: { title: string; outline: string; protagonist: string; source: { url: string; author: string; subreddit: string } | null } | null;
   error: string | null;
   /** Rerolls waiting for this run to finish, as "scene_id:kind". */
   queued: string[];
@@ -58,6 +60,7 @@ export const initialRun: RunState = {
   styleSet: null,
   loading: null,
   result: null,
+  story: null,
   error: null,
   queued: [],
   next: null,
@@ -119,6 +122,8 @@ export function runReducer(state: RunState, event: RunEvent | { type: "reset" })
     }
     case "log":
       return { ...s, logs: [...s.logs, event.line].slice(-MAX_LOGS) };
+    case "story":
+      return { ...s, story: { title: event.title, outline: event.outline, protagonist: event.protagonist, source: event.source } };
     case "done": {
       const ended = { ...s.ended };
       if (s.stage && ended[s.stage] === undefined) ended[s.stage] = event.ts;

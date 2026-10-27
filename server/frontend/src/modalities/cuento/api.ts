@@ -1,12 +1,17 @@
 import { followRun, json, store as rawStore } from "../escalera/api";
 import { apiUrl } from "../../remote";
-import type { AppOptions, RunEvent, StoryOptions, SystemStatus } from "./types";
+import type { AppOptions, Preset, RunEvent, SourceList, StoryOptions, SystemStatus } from "./types";
 
 const BASE = "/m/cuento";
 
 export const api = {
   options: () => fetch(`${BASE}/api/options`).then((r) => json<AppOptions>(r)),
   system: () => fetch(`${BASE}/api/system`).then((r) => json<SystemStatus>(r)),
+  sources: () => fetch(`${BASE}/api/sources`).then((r) => json<{ presets: Preset[]; periods: string[] }>(r)),
+  stories: (subreddit: string, period: string, refresh = false) =>
+    fetch(`${BASE}/api/sources/${encodeURIComponent(subreddit)}/stories?${new URLSearchParams({ period, refresh: refresh ? "1" : "0" })}`).then((r) =>
+      json<SourceList>(r),
+    ),
   runs: () => fetch(`${BASE}/api/runs`).then((r) => json<{ active: string | null }>(r)),
   upload: (file: File) => {
     const body = new FormData();

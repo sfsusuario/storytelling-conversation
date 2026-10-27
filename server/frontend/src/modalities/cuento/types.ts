@@ -5,6 +5,8 @@ export type { RunEvent, SystemStatus } from "../escalera/types";
 /** Mirrors cuento.config.StoryOptions fields the backend accepts (CLIENT_OPTIONS). */
 export interface StoryOptions {
   premise: string;
+  source: string; // Reddit post URL the story adapts ("" = invented)
+  preview: boolean; // stop after the text: review the script first
   tone: string;
   genre: string;
   style: string;
@@ -31,6 +33,31 @@ export interface StoryOptions {
   motion: string;
   reroll_images: string[];
   reroll_motion: string[];
+}
+
+export interface Preset {
+  subreddit: string;
+  label: string;
+  tone: string;
+  genre: string;
+}
+
+export interface SourceStory {
+  url: string;
+  title: string;
+  author: string;
+  subreddit: string;
+  words: number;
+  excerpt: string;
+}
+
+export interface SourceList {
+  subreddit: string;
+  period: string;
+  fetched_at: number;
+  stories: SourceStory[];
+  stale: boolean;
+  retry_in: number | null;
 }
 
 export interface AppOptions {

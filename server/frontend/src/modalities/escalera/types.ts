@@ -92,6 +92,8 @@ export type RunEvent = { ts: number } & (
   | { type: "scene"; scene_id: string; kind: "image" | "audio" | "motion" | "clip"; cached: boolean; path_url: string | null }
   | { type: "progress"; stage: StageName; scene_id: string | null; step: number; total: number; label: string }
   | { type: "log"; line: string }
+  // Cuento only: the written story, before the images (a preview run ends right after it)
+  | { type: "story"; title: string; outline: string; protagonist: string; source: { url: string; author: string; subreddit: string } | null }
   | { type: "done"; video_url: string | null; social: string; output_dir: string; duration: number }
   | { type: "error"; message: string; kind: string }
   | { type: "cancelled" }

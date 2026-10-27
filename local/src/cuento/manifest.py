@@ -23,8 +23,10 @@ def _rel(path: Path | None, output_dir: Path) -> str | None:
 
 
 def write_story_manifest(options: StoryOptions, story: Story, timeline: Timeline,
-                         output_dir: Path, style: str, base_image: Path | None) -> Path:
+                         output_dir: Path, style: str, base_image: Path | None,
+                         source: dict | None = None) -> Path:
     scenes = []
+    # zip stops at the story's scenes: the credits card (if any) is not one
     for scene, src in zip(timeline.scenes, story.scenes):
         scenes.append({
             "Scene_ID": scene.scene_id,
@@ -64,6 +66,10 @@ def write_story_manifest(options: StoryOptions, story: Story, timeline: Timeline
         "Test_Mode": options.test_mode,
         "Protagonist": story.protagonist,
         "Outline": story.outline,
+        "Source": source["url"] if source else None,
+        "Source_Title": source["title"] if source else None,
+        "Source_Author": source["author"] if source else None,
+        "Source_Subreddit": source["subreddit"] if source else None,
         "Scenes": scenes,
     }
     path = output_dir / "pipeline.json"
@@ -79,7 +85,8 @@ def regenerate_options(name: str, root: Path = OUTPUT_ROOT) -> dict:
     base = m.get("Base_Image")
     photo = folder / base if base else None
     fields = {
-        "premise": m["Premise"], "tone": m["Tone"], "genre": m["Genre"],
+        "premise": m["Premise"], "source": m.get("Source") or "",
+        "tone": m["Tone"], "genre": m["Genre"],
         "style": m.get("Style", "auto"), "scenes": len(m["Scenes"]),
         "seed": m.get("Seed"), "language": m.get("Language", "es"),
         "voice": m.get("Voice"), "voice_rate": m.get("Voice_Rate"),

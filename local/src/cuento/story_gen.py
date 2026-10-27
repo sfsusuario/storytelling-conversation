@@ -19,8 +19,9 @@ from escalator.text_gen import (TextGenError, UnparseableRewrites, _format_socia
                                 resolve_text_backend)
 
 from .config import TONES
+from .sources import MAX_WORDS
 
-PROMPT_VERSION = "story-v1"
+PROMPT_VERSION = "story-v2"
 
 
 class StoryScene(BaseModel):
@@ -69,6 +70,10 @@ GENRE_RULES = {
     "scifi": ("Genre: science fiction. One speculative idea, its consequence for the protagonist, and a "
               "twist in the last scene."),
 }
+ADAPT_RULE = (
+    "This is an adaptation of a real story given by the user: keep its events, characters, point of "
+    "view and ending; compress it into the scenes, do not invent a different plot and do not add a "
+    "moral unless the tone asks for one. Never mention Reddit, the author or that it is a post.")
 PROTAGONIST_RULES = {
     False: ('fill "protagonist" in English with 12 to 20 purely visual words (species or age, outfit, '
             'colors, one distinctive trait), no name; it is reused in every image.'),
@@ -77,22 +82,31 @@ PROTAGONIST_RULES = {
 }
 
 
-def system_prompt(tone: str, genre: str, count: int, language: str, has_photo: bool) -> str:
+def system_prompt(tone: str, genre: str, count: int, language: str, has_photo: bool,
+                  adapted: bool = False) -> str:
     if tone == "infantil":
         rules, tail, max_words = INFANTIL_RULES, ", and the moral", 30
     else:
         rules, max_words = GENRE_RULES[genre], 35
         tail = ", and the reveal" if genre == "misterio" else ", and the twist"
+    if adapted:
+        rules = f"{ADAPT_RULE}\n{rules}"
     return SYSTEM_TEMPLATE.format(
         count=count, outline_tail=tail, tone_rules=rules, max_words=max_words,
         language=LANGUAGE_NAMES.get(language, language),
         protagonist_rule=PROTAGONIST_RULES[has_photo])
 
 
-def user_prompt(premise: str, tone: str, genre: str, count: int) -> str:
+def user_prompt(premise: str, tone: str, genre: str, count: int,
+                source: dict | None = None) -> str:
     tone_en, genre_en = TONES[tone][1], TONES[tone][2][genre][1]
-    return (f'Premise: "{premise.strip()}"\nTone: {tone_en}. Genre: {genre_en}.\n'
-            f'Write exactly {count} scenes, "index" 1 to {count}.')
+    prompt = (f'Premise: "{premise.strip()}"\nTone: {tone_en}. Genre: {genre_en}.\n'
+              f'Write exactly {count} scenes, "index" 1 to {count}.')
+    if source:
+        text = " ".join(source["text"].split()[:MAX_WORDS])
+        prompt += (f'\n\nTitle of the real story: "{source["title"]}"\n'
+                   f'Real story to adapt (keep its events and ending):\n"""\n{text}\n"""')
+    return prompt
 
 
 def _story_via_claude(system: str, user: str, model: str) -> Story:
@@ -187,14 +201,17 @@ def _normalize(story: Story, count: int) -> Story | None:
 def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
                    cache_dir: Path, provider: str = "auto", language: str = "es",
                    seed: int | None = None, has_photo: bool = False,
-                   keep: bool = False) -> tuple[Story, str]:
+                   keep: bool = False, source: dict | None = None) -> tuple[Story, str]:
     """Return (story, social text). Cached in cache_dir/story.json.
-    keep: reuse the cached story even if made with an older prompt or model."""
+    keep: reuse the cached story even if made with an older prompt or model.
+    source: a real story (sources.fetch_story) the LLM adapts instead of
+    inventing one; the social text then credits it."""
     provider, model = resolve_text_backend(provider, model)
-    system = system_prompt(tone, genre, count, language, has_photo)
-    user = user_prompt(premise, tone, genre, count)
+    system = system_prompt(tone, genre, count, language, has_photo, adapted=source is not None)
+    user = user_prompt(premise, tone, genre, count, source)
     key = hashlib.sha256(json.dumps(
-        [premise, tone, genre, count, language, has_photo, model, PROMPT_VERSION, system],
+        [premise, tone, genre, count, language, has_photo, model, PROMPT_VERSION, system,
+         source and source["url"], source and hashlib.sha256(source["text"].encode()).hexdigest()],
         ensure_ascii=False).encode("utf-8")).hexdigest()
 
     cache_file = cache_dir / "story.json"
@@ -229,6 +246,9 @@ def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
         raise TextGenError(f"Expected {count} scenes, the model returned fewer; "
                            "try again or pick another text model.")
     social = _format_social(story.caption, story.hashtags, story.title)
+    if source:
+        social += (f"\n\nHistoria original: u/{source['author']} en r/{source['subreddit']}"
+                   f" · {source['url']}")
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     tmp = cache_file.with_suffix(".tmp")

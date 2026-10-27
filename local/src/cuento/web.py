@@ -19,6 +19,7 @@ from studio.runs import active_run as _active_run
 from .config import (CLIENT_OPTIONS, IMAGE_PROVIDERS, OUTPUT_ROOT, STYLE_PRESETS, TONES,
                      StoryOptions, validate)
 from .manifest import regenerate_options
+from .sources import PERIODS, PRESETS, SourceError, list_stories, used_urls
 
 UPLOADS = OUTPUT_ROOT / "_uploads"
 # served by the studio root: output/ is mounted at /media (Conversación)
@@ -84,6 +85,22 @@ def create_app():
     @app.get("/api/system")
     def system():
         return system_status()
+
+    @app.get("/api/sources")
+    def sources():
+        return {"presets": PRESETS, "periods": list(PERIODS)}
+
+    @app.get("/api/sources/{subreddit}/stories")
+    def source_stories(subreddit: str, period: str = "week", refresh: bool = False):
+        """Top stories of a subreddit (cached), minus the ones already made
+        into a video and without their full text (the pipeline reads it)."""
+        try:
+            data = list_stories(subreddit, period, refresh)
+        except SourceError as e:
+            raise HTTPException(503 if e.retry_in else 400, str(e))
+        used = used_urls()
+        return {**data, "stories": [{k: v for k, v in s.items() if k != "text"}
+                                    for s in data["stories"] if s["url"] not in used]}
 
     @app.post("/api/uploads")
     async def upload(file: UploadFile):

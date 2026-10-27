@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import json
 import shutil
 import threading
 import time
@@ -28,29 +29,34 @@ from escalator.tts import resolve_voice, synthesize_scenes
 
 from .config import (AUDIO_TRIGGER_DELAY, OUTPUT_ROOT, SCENE_END_DELAY, STYLE_PRESETS,
                      StoryOptions, default_style, style_fragment, validate)
-from .images import (generate_story_images, placeholder_images,
-                     resolve_story_image_provider, story_prompt)
+from .images import (credits_card, generate_story_images, placeholder_images,
+                     resolve_story_image_provider, silence_wav, story_prompt)
 from .manifest import write_story_manifest
+from .sources import fetch_story
 from .story_gen import generate_story
 
 Progress = Callable[[str], None]
 EventSink = Callable[[dict], None]
+CREDITS_SECONDS = 3.0
 
 
 def default_output_dir(options: StoryOptions) -> Path:
+    # preview is left out on purpose: "continue" must land in the same folder
     h = hashlib.sha256()
     h.update("|".join(str(x) for x in (
-        options.premise, options.tone, options.genre, options.style, options.scenes,
-        options.language, options.voice, options.voice_rate, options.voice_pitch,
-        f"{options.width}x{options.height}@{options.fps}", options.fit,
-        options.watermark, options.subtitles, options.test_mode)).encode("utf-8"))
+        options.premise, options.source, options.tone, options.genre, options.style,
+        options.scenes, options.language, options.voice, options.voice_rate,
+        options.voice_pitch, f"{options.width}x{options.height}@{options.fps}",
+        options.fit, options.watermark, options.subtitles, options.test_mode)).encode("utf-8"))
     h.update(Path(options.base_image).read_bytes() if options.base_image else b"nophoto")
-    return OUTPUT_ROOT / f"{_slugify(options.premise)}-{h.hexdigest()[:8]}"
+    label = options.premise or options.source.rstrip("/").rsplit("/", 1)[-1]
+    return OUTPUT_ROOT / f"{_slugify(label)}-{h.hexdigest()[:8]}"
 
 
 def run_story(options: StoryOptions, on_progress: Progress = print,
               on_event: EventSink | None = None,
-              cancel: threading.Event | None = None) -> Path:
+              cancel: threading.Event | None = None) -> Path | None:
+    """The final video, or None for a preview (stops after the text)."""
     log = on_progress
     validate(options)
     if options.base_image and not Path(options.base_image).is_file():
@@ -122,14 +128,26 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
     def kept(name: str) -> bool:
         return bool(options.force_from) and STAGES.index(name) < STAGES.index(options.force_from)
 
-    # 1. the story
+    # 1. the story (invented, or adapted from a real Reddit post)
     provider, text_model = resolve_text_backend(options.text_provider, options.text_model)
     options.text_provider, options.text_model = provider, text_model
     stage("text", f"{provider}: {text_model}")
-    story, social = generate_story(options.premise, options.tone, options.genre, count,
+    source = None
+    if options.source:
+        source_file = output_dir / "01_text" / "source.json"
+        if source_file.exists():
+            source = json.loads(source_file.read_text(encoding="utf-8"))
+        else:
+            source = fetch_story(options.source)
+            source_file.parent.mkdir(parents=True, exist_ok=True)
+            source_file.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
+        log(f"  historia real: u/{source['author']} en r/{source['subreddit']} ({source['words']} palabras)")
+    premise = options.premise.strip() or source["title"]
+    story, social = generate_story(premise, options.tone, options.genre, count,
                                    text_model, output_dir / "01_text", provider=provider,
                                    language=options.language, seed=options.seed,
-                                   has_photo=base_image is not None, keep=kept("text"))
+                                   has_photo=base_image is not None, keep=kept("text"),
+                                   source=source)
     for scene, src in zip(scenes, story.scenes):
         scene.speech_script = src.narration
         prompt = (f"{src.image_prompt}, {story.protagonist}, {fragment}" if base_image
@@ -138,6 +156,13 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
         log(f'  escena {scene.index}: "{src.narration}"')
         emit("scene", scene_id=scene.scene_id, kind="text", text=src.narration)
     (output_dir / "social.txt").write_text(social, encoding="utf-8")
+    emit("story", title=story.title, outline=story.outline, protagonist=story.protagonist,
+         source=({"url": source["url"], "author": source["author"],
+                  "subreddit": source["subreddit"]} if source else None))
+    if options.preview:
+        log("guion listo (solo texto)")
+        emit("done", video=None, social=social, output_dir=str(output_dir), duration=0.0)
+        return None
 
     # 2. images
     images_dir = output_dir / "02_images"
@@ -172,6 +197,17 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
                       provider=options.tts_provider, language=options.language,
                       log=log, on_scene=scene_event("audio"), keep=kept("tts"))
 
+    # a Reddit story ends with a credits card: a silent still scene the
+    # renderer treats like any other (same fit, watermark and fades)
+    story_scenes = list(scenes)
+    if source:
+        scenes.append(Scene(
+            index=count + 1, scene_id="credits", persona=scenes[0].persona,
+            image_path=credits_card(output_dir / "02_images" / "credits.png", source["author"],
+                                    source["subreddit"], ffmpeg, options.width, options.height),
+            audio_path=silence_wav(output_dir / "03_audio" / "credits.wav", CREDITS_SECONDS, ffmpeg),
+            audio_duration=CREDITS_SECONDS, audio_trigger_delay=0.0, scene_end_delay=0.0))
+
     # 4. timeline: no level badge, subtitles keep the characters' names
     timeline = build_timeline(scenes, options.width, options.height, options.fps,
                               options.fit, options.watermark, options.subtitles,
@@ -181,7 +217,7 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
 
     # 5. motion: the same 3D parallax as Escalera; a scene with no figure stays still
     stage("motion", options.motion if options.motion != "none" else "off")
-    generate_motion(options.motion, scenes, output_dir / "05_motion", options.fps,
+    generate_motion(options.motion, story_scenes, output_dir / "05_motion", options.fps,
                     ffmpeg, seed=options.seed, log=log, on_scene=scene_event("motion"),
                     on_step=step_event("motion"),
                     variants=scene_variants(output_dir / "05_motion" / "variants.json",
@@ -193,7 +229,7 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
     final_path = render_all(ffmpeg, timeline, output_dir / "04_clips",
                             output_dir / "final.mp4", log=log,
                             on_clip=scene_event("clip"))
-    write_story_manifest(options, story, timeline, output_dir, style, base_image)
+    write_story_manifest(options, story, timeline, output_dir, style, base_image, source)
     log(f"done: {final_path}")
     emit("done", video=str(final_path), social=social, output_dir=str(output_dir),
          duration=timeline.total_duration)

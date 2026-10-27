@@ -8,6 +8,7 @@ import type { Upload } from "../escalera/components/Wizard";
 import { initialRun, runReducer, stageDurations } from "../escalera/runState";
 import { STAGE_LABELS } from "../escalera/types";
 import { api, follow, store } from "./api";
+import { StoryPreview } from "./StoryPreview";
 import { StoryForm } from "./Wizard";
 import type { AppOptions, StoryOptions, SystemStatus } from "./types";
 
@@ -233,6 +234,9 @@ export default function App() {
               }}
             />
           </div>
+        ) : showRun && run.status === "done" && run.result && !run.result.video ? (
+          // "Solo el guion": the text is written; continue reuses it from the cache
+          <StoryPreview state={run} onContinue={() => start({ preview: false })} onAnother={() => start({ preview: true, force_from: "text" })} onBack={newStory} />
         ) : showRun && run.status === "done" && run.result ? (
           <ResultView state={run} onNew={newStory} onRegenerate={(stage) => start({ force_from: stage })} onReroll={reroll} labels={labels} />
         ) : showRun ? (
@@ -273,7 +277,8 @@ export default function App() {
                 store.set("upload", null);
               }}
               error={startError}
-              onStart={() => start()}
+              onStart={() => start({ preview: false })}
+              onPreview={() => start({ preview: true })}
             />
           </div>
         )}

@@ -21,11 +21,60 @@ STORY = Story(
     caption="¿Y si tu forma de volar fuera otra?", hashtags=["cuento", "tortuga"])
 
 
+SOURCE = {"url": "https://www.reddit.com/r/shortscarystories/comments/abc/my_story/",
+          "title": "My wife and I switched places", "author": "ForgottenWell",
+          "subreddit": "shortscarystories", "words": 120,
+          "text": "Being married can be difficult. " * 20, "excerpt": "Being married"}
+
+
 def test_prompts_follow_tone_and_photo():
     kids = system_prompt("infantil", "aventura", 6, "es", False)
     assert "exactly 6 scenes" in kids and "moral" in kids and "español" in kids
     horror = system_prompt("general", "terror", 5, "es", True)
     assert "horror" in horror and "never their face" in horror and "twist" in horror
+    assert "real story" not in horror and "real story" in system_prompt("general", "terror", 5, "es", False, adapted=True)
+    from cuento.story_gen import user_prompt
+    prompt = user_prompt("x", "general", "terror", 5, SOURCE)
+    assert SOURCE["title"] in prompt and "Being married" in prompt
+
+
+@pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg missing")
+def test_preview_then_continue_with_reddit_source(tmp_path, monkeypatch):
+    import json
+
+    from cuento import story_gen
+    from cuento.manifest import regenerate_options
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(pipeline, "resolve_text_backend", lambda p, m: ("ollama", "fake"))
+    llm_calls = []
+    monkeypatch.setattr(story_gen, "_story_via_ollama", lambda *a, **k: llm_calls.append(1) or STORY)
+    monkeypatch.setattr(pipeline, "fetch_story", lambda url: {**SOURCE, "url": url})
+    out = tmp_path / "output" / "cuento" / "switched-1"
+    opts = dict(source=SOURCE["url"], scenes=4, test_mode=True, tts_provider="edge",
+                voice="es-ES-AlvaroNeural", width=540, height=960, watermark="", motion="none",
+                output_dir=out)
+    events = []
+    # 1. the script only
+    assert pipeline.run_story(StoryOptions(preview=True, **opts), on_progress=lambda *_: None,
+                              on_event=events.append) is None
+    types = [e["type"] for e in events]
+    assert types[-1] == "done" and events[-1]["video"] is None and "images" not in [e.get("name") for e in events]
+    story_ev = next(e for e in events if e["type"] == "story")
+    assert story_ev["title"] == STORY.title and story_ev["source"]["author"] == "ForgottenWell"
+    assert not (out / "final.mp4").exists() and (out / "01_text" / "story.json").exists()
+    assert llm_calls == [1]
+    # 2. continue: the text comes from the cache, the video ends with the credits card
+    events.clear()
+    final = pipeline.run_story(StoryOptions(**opts), on_progress=lambda *_: None, on_event=events.append)
+    assert llm_calls == [1] and final.exists() and (out / "04_clips" / "credits.mp4").exists()
+    assert (out / "02_images" / "credits.png").stat().st_size > 0
+    assert len([e for e in events if e["type"] == "scene" and e["kind"] == "clip"]) == 5  # 4 + credits
+    m = json.loads((out / "pipeline.json").read_text(encoding="utf-8"))
+    assert (m["Source"], m["Source_Author"], len(m["Scenes"])) == (SOURCE["url"], "ForgottenWell", 4)
+    assert "Historia original: u/ForgottenWell en r/shortscarystories" in (out / "social.txt").read_text(encoding="utf-8")
+    assert regenerate_options("switched-1", tmp_path / "output" / "cuento")["source"] == SOURCE["url"]
+    runs = read_cuento("cuento", tmp_path / "output" / "cuento", "/media/cuento")
+    assert runs[0]["meta"]["fuente"] == "r/shortscarystories · u/ForgottenWell"
 
 
 @pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg missing")

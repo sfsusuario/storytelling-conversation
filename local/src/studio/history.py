@@ -133,6 +133,8 @@ def read_cuento(modality: str, output: Path, prefix: str) -> list[dict]:
             "meta": {"escenas": len(scenes), "tono": tone[0] or m.get("Tone"),
                      "voz": m.get("Voice"), "imágenes": m.get("Image_Provider")},
         }
+        if m.get("Source"):
+            run["meta"]["fuente"] = f"r/{m.get('Source_Subreddit')} · u/{m.get('Source_Author')}"
         if first_image:
             run["thumb_url"] = _url(prefix, output, run_dir / first_image)
         runs.append(run)

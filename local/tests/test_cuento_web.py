@@ -76,6 +76,32 @@ def test_run_with_photo(client, monkeypatch):
     assert Path(seen[0].base_image).name.startswith(up.json()["upload_id"])
 
 
+def test_sources_and_preview(client, monkeypatch):
+    from test_cuento_sources import URL, feed_xml
+
+    from cuento import sources
+    monkeypatch.setattr(sources, "_fetch", lambda url: feed_xml())
+    assert client.get("/api/sources").json()["presets"][0]["subreddit"] == "shortscarystories"
+    got = client.get("/api/sources/shortscarystories/stories").json()
+    assert [s["url"] for s in got["stories"]] == [URL] and "text" not in got["stories"][0]
+    assert client.get("/api/sources/bad name/stories").status_code == 400
+    # already made into a video: hidden from the list
+    run = web.OUTPUT_ROOT / "switched-1"
+    run.mkdir(parents=True)
+    (run / "pipeline.json").write_text(json.dumps({"Source": URL}))
+    assert client.get("/api/sources/shortscarystories/stories").json()["stories"] == []
+    # a story run: no premise needed, preview accepted, foreign hosts refused
+    seen = []
+    monkeypatch.setattr(pipeline, "run_story",
+                        lambda options, **k: seen.append(options) or fake_story(options, **k))
+    bad = client.post("/api/runs", json={"upload_id": "", "options": {"premise": "x", "source": "https://evil.com/r/a/comments/b/"}})
+    assert bad.status_code == 400
+    ok = client.post("/api/runs", json={"upload_id": "", "options": {"source": URL, "preview": True}})
+    assert ok.status_code == 200, ok.text
+    sse_events(client.get(f"/api/runs/{ok.json()['run_id']}/events").text)
+    assert seen[0].source == URL and seen[0].preview and seen[0].premise == ""
+
+
 def test_rejects_bad_requests(client):
     post = lambda body: client.post("/api/runs", json=body).status_code
     assert post({"upload_id": "", "options": {"premise": "x", "output_dir": "C:/"}}) == 400
