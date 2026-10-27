@@ -209,6 +209,16 @@ mueve con el efecto 3D; el video sale en `output/cuento/<cuento>/final.mp4`.
   (~12 min por escena).
 - **Modo prueba:** imágenes de relleno para comprobar el cuento y la voz en
   un minuto.
+- **📰 Historia real de Reddit:** elige una historia de r/shortscarystories,
+  r/HistoriasDeTerror, r/nosleep, r/LetsNotMeet, r/Glitch_in_the_Matrix,
+  r/tifu o de cualquier `r/…`; el LLM la adapta (mismos hechos y final) en
+  español, el texto social acredita al autor y el video termina con una
+  tarjeta «Historias de Reddit» (icono, `u/autor`, `r/sub`). Usa el RSS
+  público sin clave: Reddit admite ~1 petición por minuto, así que cada lista
+  se guarda 30 min en `output/cuento/_fuentes/` y «Otras» pasa páginas sin
+  pedir más. Las historias ya convertidas en video no se vuelven a ofrecer.
+- **📝 Solo el guion:** escribe el guion y se detiene para revisarlo; «Continuar»
+  reutiliza ese texto (sin volver a llamar al LLM) y «Otro guion» lo reescribe.
 - Una escena sin figura clara se queda fija en vez de abortar; los subtítulos
   conservan los nombres propios; no lleva insignia de nivel.
 
