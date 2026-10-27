@@ -27,6 +27,10 @@ STEPS, CFG = 30, 7.0
 PLACEHOLDER_COLORS = ["3b5bdb", "2b8a3e", "e67700", "862e9c", "c92a2a", "0b7285", "5f3dc4", "a61e4d"]
 REDDIT_ICON = Path(__file__).resolve().parents[2] / "assets" / "reddit-icon.png"
 _FONT = "fontfile='C\\:/Windows/Fonts/arialbd.ttf'"   # the renderer's font
+# "the protagonist watches the creature bend": SDXL draws the watcher and
+# drops the creature, so the watcher goes and the thing seen stays
+_WATCHER = re.compile(r"^the protagonista? (watches|sees|stares (at|as)|looks at|notices|hears|"
+                      r"listens to|realizes|discovers|finds)( that| as| how)?\s+", re.I)
 
 
 def resolve_story_image_provider(provider: str, has_photo: bool) -> str:
@@ -52,9 +56,10 @@ def story_prompt(scene, protagonist: str, style: str) -> str:
     drop the scene; and the scene must reach the second encoder (OpenCLIP
     bigG), which carries most of the weight: given only the character and
     the style, it painted the same figure in the fog for every scene."""
-    subject = re.sub(r"\b(the|el|la) protagonista?\b", protagonist, scene.action, count=1, flags=re.I)
-    if subject == scene.action:  # the model left the subject out
-        subject = f"{protagonist} {scene.action}"
+    # no "the protagonist" in the action: the scene is about something seen
+    # (a creature, a photo, a door), drawn without the character
+    action = _WATCHER.sub("", scene.action.strip())
+    subject = re.sub(r"\b(the|el|la) protagonista?\b", protagonist, action, count=1, flags=re.I)
     parts = [scene.shot, subject, scene.setting, scene.key_object, style]
     return ", ".join(p.strip() for p in parts if p and p.strip())
 

@@ -2,7 +2,9 @@
 caption and hashtags, from Ollama, Claude or Gemini as one JSON object.
 
 Same backends and cache discipline as escalator.text_gen, with the story
-schema instead of the rewrite ladder.
+schema instead of the rewrite ladder. The pictures are a second, narrow
+call: a small local model writes good narration but, asked for both at
+once, reduces every picture to "the protagonist looks at the screen".
 """
 from __future__ import annotations
 
@@ -22,10 +24,11 @@ from escalator.text_gen import (TextGenError, UnparseableRewrites, _format_socia
 from .config import TONES
 from .sources import MAX_WORDS
 
-PROMPT_VERSION = "story-v3"
+PROMPT_VERSION = "story-v5"
 # Spanish function words in a picture field mean the model ignored the
-# English rule (the image model only reads English): the story is asked again
-_SPANISH = re.compile(r"\b(un|una|unos|unas|el|la|los|las|con|de|del|en|por|para|que|y)\b", re.I)
+# English rule (the image model only reads English): it is asked again
+_SPANISH = re.compile(r"\b(un|una|unos|unas|el|la|los|las|con|de|del|en|por|para|que|y|sin|al|su|sus|se)\b",
+                      re.I)
 ENGLISH_REMINDER = ('\nREMINDER: "protagonist", "action", "setting", "key_object" and "shot" must be '
                     'written in English even though the narration is not.')
 
@@ -57,6 +60,18 @@ class Story(BaseModel):
     hashtags: list[str]
 
 
+class Picture(BaseModel):
+    index: int
+    action: str
+    setting: str
+    key_object: str
+    shot: str
+
+
+class Pictures(BaseModel):
+    pictures: list[Picture]
+
+
 SYSTEM_TEMPLATE = """\
 You write a very short illustrated story for a vertical social video, told in exactly {count} scenes.
 First fill "outline": one sentence with the protagonist, what they want, the obstacle and how it ends{outline_tail}.
@@ -64,19 +79,40 @@ First fill "outline": one sentence with the protagonist, what they want, the obs
 Narration rules: every scene's "narration" is written in {language}, {max_words} words at most, one or two \
 sentences read aloud by a narrator: no quotes, emojis, markdown or stage directions. Keep one tense. Every \
 scene moves the story forward; the last one closes it.
-Protagonist: {protagonist_rule} The protagonist appears in EVERY scene's picture; in a first-person story \
-the narrator IS the protagonist.
-Each scene's picture is taken literally from that scene's narration (no new events) and is written in \
-ENGLISH, always, whatever the narration's language, because the image model only reads English: "action" \
-= what the protagonist is doing at that exact moment, present tense, 12 words at most, starting with \
-"the protagonist"; "setting" = place and time of day, 8 words at most; "key_object" = the one object, \
-creature or detail the narration hinges on, 5 words at most, or "" if none; "shot" = camera distance, \
-light and mood, 8 words at most: mostly "wide shot" or "medium shot" so the place and the action are \
-visible, "close-up" only when the scene is about a small detail. "protagonist" is in English too. Never \
-names, never text, letters, signs or speech bubbles.
+Protagonist: {protagonist_rule} In a first-person story the narrator IS the protagonist.
+Each scene's picture shows the most striking VISIBLE thing in that scene's narration (no new events), \
+written in ENGLISH, always, whatever the narration's language, because the image model only reads \
+English. "action" (present tense, 12 words at most) is either the protagonist doing something, starting \
+with "the protagonist", or, when the scene is about something seen (a creature, a figure, what a photo \
+shows, a door, a trace), THAT thing itself, large in frame, without the protagonist. "setting" = place \
+and time of day, 8 words at most; "key_object" = the one object, creature or detail the narration hinges \
+on, 5 words at most, or "" if none; "shot" = camera distance, light and mood, 8 words at most: mostly \
+"wide shot" or "medium shot" so the place and the action are visible, "close-up" only for a small detail. \
+Consecutive scenes must not repeat the same action and setting: change the place, the distance or what \
+is in frame, so each picture tells its own moment. "protagonist" is in English too. Never names, never \
+text, letters, signs or speech bubbles.
 Also fill "title" (in {language}, 6 words at most), "caption" (one hook line in {language} for the video \
 description) and "hashtags" (6 to 8, without #).
 Answer only with the JSON object.\
+"""
+
+PICTURES_SYSTEM = """\
+You are a storyboard artist. For each numbered narration you describe, in ENGLISH only, the one still \
+image that shows it, as JSON: "action" (12 words at most, present tense), "setting" (place and time of \
+day, 8 words at most), "key_object" (the one object, creature or detail the narration hinges on, 5 words \
+at most, or ""), "shot" (camera distance, light and mood, 8 words at most).
+Rules: the image shows the most striking VISIBLE thing in that narration, nothing it does not say. When \
+the narration is about something seen or heard at a place (a creature, a silhouette, what a photo shows, \
+a window, marks on glass, a door), "action" describes THAT thing, large in frame, and the protagonist is \
+left out or tiny. Otherwise "action" starts with "the protagonist" doing something concrete. Prefer \
+"wide shot" or "medium shot"; "close-up" only for a small detail. Consecutive images must differ in \
+place, distance or content. Never names, text, letters or speech bubbles. Every field in English, even \
+though the narrations are not.
+Example narration: "Las fotos eran normales hasta que una a las 03:14 mostró una silueta delgada entre \
+los arbustos." -> {"action": "a thin pale figure bends between dark bushes, caught by a trail camera", \
+"setting": "forest edge, night", "key_object": "trail camera photo", "shot": "wide shot, grainy night \
+vision, eerie"}
+Answer only with the JSON object, one entry per narration, "index" 1 to {count}.\
 """
 
 INFANTIL_RULES = (
@@ -133,13 +169,20 @@ def user_prompt(premise: str, tone: str, genre: str, count: int,
     return prompt
 
 
-def _story_via_claude(system: str, user: str, model: str) -> Story:
+def pictures_prompt(story: Story) -> str:
+    lines = [f'Protagonist (reuse this phrase when they appear): "{story.protagonist}"',
+             f"Story in one line: {story.outline}", "Narrations:"]
+    lines += [f"{s.index}. {s.narration}" for s in story.scenes]
+    return "\n".join(lines)
+
+
+def _story_via_claude(system: str, user: str, model: str, schema=Story):
     import anthropic
 
     try:
         response = anthropic.Anthropic().messages.parse(
             model=model, max_tokens=3000, system=system,
-            messages=[{"role": "user", "content": user}], output_format=Story)
+            messages=[{"role": "user", "content": user}], output_format=schema)
     except anthropic.AuthenticationError as e:
         raise TextGenError("ANTHROPIC_API_KEY missing or invalid. Set it with:\n"
                            "  $env:ANTHROPIC_API_KEY = 'sk-ant-...'") from e
@@ -152,7 +195,7 @@ def _story_via_claude(system: str, user: str, model: str) -> Story:
     return response.parsed_output
 
 
-def _story_via_gemini(system: str, user: str, model: str) -> Story:
+def _story_via_gemini(system: str, user: str, model: str, schema=Story):
     from google import genai
     from google.genai import types
 
@@ -161,19 +204,19 @@ def _story_via_gemini(system: str, user: str, model: str) -> Story:
             model=model, contents=user,
             config=types.GenerateContentConfig(
                 system_instruction=system, response_mime_type="application/json",
-                response_schema=Story))
+                response_schema=schema))
     except Exception as e:
         raise TextGenError(f"Gemini text API error: {e}") from e
     parsed = response.parsed
     if parsed is None:
         try:
-            parsed = Story.model_validate_json(response.text or "")
+            parsed = schema.model_validate_json(response.text or "")
         except Exception as e:
             raise TextGenError("Gemini returned no parseable story for this premise.") from e
     return parsed
 
 
-def _story_via_ollama(system: str, user: str, model: str, seed: int | None = None) -> Story:
+def _story_via_ollama(system: str, user: str, model: str, seed: int | None = None, schema=Story):
     """Local generation through Ollama's /api/chat with a JSON-schema format.
     keep_alive=0 unloads the model right after, freeing RAM for the image model."""
     options = {"temperature": 0.8, "num_ctx": 16384}
@@ -183,7 +226,7 @@ def _story_via_ollama(system: str, user: str, model: str, seed: int | None = Non
         "model": model,
         "messages": [{"role": "system", "content": system},
                      {"role": "user", "content": user}],
-        "format": Story.model_json_schema(),
+        "format": schema.model_json_schema(),
         "think": "low" if model.startswith("gpt-oss") else False,
         "stream": False,
         "keep_alive": 0,
@@ -204,16 +247,22 @@ def _story_via_ollama(system: str, user: str, model: str, seed: int | None = Non
         raise TextGenError(f"Could not reach Ollama at {OLLAMA_HOST}; is it "
                            "running? (ollama serve)") from e
     try:
-        return Story.model_validate_json(data["message"]["content"])
+        return schema.model_validate_json(data["message"]["content"])
     except Exception as e:
         raise UnparseableRewrites("Ollama returned no parseable story; try again "
                                   "or use another model.") from e
 
 
-def _in_english(story: Story) -> bool:
-    fields = [story.protagonist] + [f"{s.action} {s.setting} {s.key_object} {s.shot}"
-                                    for s in story.scenes]
-    return not any(_SPANISH.search(f) for f in fields)
+def _ask(provider: str, system: str, user: str, model: str, seed: int | None, schema=Story):
+    if provider == "ollama":
+        return _story_via_ollama(system, user, model, seed, schema=schema)
+    if provider == "claude":
+        return _story_via_claude(system, user, model, schema=schema)
+    return _story_via_gemini(system, user, model, schema=schema)
+
+
+def _in_english(*texts: str) -> bool:
+    return not any(_SPANISH.search(t) for t in texts)
 
 
 def _normalize(story: Story, count: int) -> Story | None:
@@ -225,6 +274,29 @@ def _normalize(story: Story, count: int) -> Story | None:
     scenes = [s.model_copy(update={"index": i + 1, "narration": s.narration.strip()})
               for i, s in enumerate(scenes[:count])]
     return story.model_copy(update={"scenes": scenes})
+
+
+def _pictures(story: Story, provider: str, model: str, seed: int | None) -> Story:
+    """Second pass: the picture fields of every scene from its narration alone.
+    Two tries for a complete English answer; otherwise the story call's own
+    fields stay (a worse picture, not a failed run)."""
+    system = PICTURES_SYSTEM.replace("{count}", str(len(story.scenes)))
+    user = pictures_prompt(story)
+    for attempt in range(2 if provider == "ollama" else 1):
+        try:
+            got = _ask(provider, system, user + (ENGLISH_REMINDER if attempt else ""), model,
+                       None if seed is None else seed + 10 + attempt, schema=Pictures)
+        except UnparseableRewrites:
+            continue
+        by_index = {p.index: p for p in got.pictures if p.action.strip()}
+        if not all(i in by_index for i in range(1, len(story.scenes) + 1)):
+            continue
+        fields = {"action", "setting", "key_object", "shot"}
+        pics = [by_index[s.index].model_dump(include=fields) for s in story.scenes]
+        if _in_english(*(v for p in pics for v in p.values())):
+            return story.model_copy(update={"scenes": [
+                s.model_copy(update=p) for s, p in zip(story.scenes, pics)]})
+    return story
 
 
 def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
@@ -256,28 +328,23 @@ def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
     story = unparseable = None
     for attempt in range(2 if provider == "ollama" else 1):
         ask = user + ENGLISH_REMINDER if attempt else user
-        if provider == "ollama":
-            try:
-                raw = _story_via_ollama(system, ask, model,
-                                        None if seed is None else seed + attempt)
-            except UnparseableRewrites as e:
-                unparseable = e
-                continue
-        elif provider == "claude":
-            raw = _story_via_claude(system, ask, model)
-        else:
-            raw = _story_via_gemini(system, ask, model)
+        try:
+            raw = _ask(provider, system, ask, model, None if seed is None else seed + attempt)
+        except UnparseableRewrites as e:
+            unparseable = e
+            continue
         candidate = _normalize(raw, count)
         if candidate is None:
             continue
         story = candidate
-        if _in_english(story):  # otherwise one more try; the last answer is kept
+        if _in_english(story.protagonist):  # otherwise one more try; the last answer is kept
             break
     if story is None:
         if unparseable is not None:
             raise unparseable
         raise TextGenError(f"Expected {count} scenes, the model returned fewer; "
                            "try again or pick another text model.")
+    story = _pictures(story, provider, model, seed)
     social = _format_social(story.caption, story.hashtags, story.title)
     if source:
         social += (f"\n\nHistoria original: u/{source['author']} en r/{source['subreddit']}"

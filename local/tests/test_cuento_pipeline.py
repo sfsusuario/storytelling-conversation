@@ -33,9 +33,12 @@ def test_scene_prompts_are_built_from_the_narration_fields():
     assert story_prompt(sc, STORY.protagonist, "soft watercolor") == (
         "wide shot, soft light, hopeful, a small green turtle with a red scarf looks up at birds, "
         "a sunny riverbank, morning, three swallows, soft watercolor")
-    # an action without "the protagonist" still gets the subject
-    no_subject = sc.model_copy(update={"action": "looks up at birds"})
-    assert story_prompt(no_subject, "a turtle", "x").startswith("wide shot, soft light, hopeful, a turtle looks up")
+    # an action without "the protagonist" is a thing seen: drawn without the character
+    thing = sc.model_copy(update={"action": "a huge shadow glides under the water"})
+    assert story_prompt(thing, "a turtle", "x") == ("wide shot, soft light, hopeful, a huge shadow glides under the "
+                                                   "water, a sunny riverbank, morning, three swallows, x")
+    watcher = sc.model_copy(update={"action": "the protagonist stares as a faceless creature gazes at the lens"})
+    assert story_prompt(watcher, "a turtle", "x").startswith("wide shot, soft light, hopeful, a faceless creature gazes")
     spanish = sc.model_copy(update={"action": "El protagonista mira a los pájaros"})
     assert "a turtle mira a los pájaros" in story_prompt(spanish, "a turtle", "x")
     assert default_style("general", "terror", real_story=True) == "real" and default_style("general", "terror") == "oscuro"
@@ -48,13 +51,14 @@ SOURCE = {"url": "https://www.reddit.com/r/shortscarystories/comments/abc/my_sto
           "text": "Being married can be difficult. " * 20, "excerpt": "Being married"}
 
 
-def test_spanish_picture_fields_get_one_retry(tmp_path, monkeypatch):
+def test_spanish_protagonist_gets_one_retry(tmp_path, monkeypatch):
     from cuento import story_gen
     monkeypatch.setattr(story_gen, "resolve_text_backend", lambda p, m: ("ollama", "fake"))
+    monkeypatch.setattr(story_gen, "_pictures", lambda story, *a: story)
     spanish = STORY.model_copy(update={"protagonist": "un joven con una linterna"})
     answers, asked = [spanish, STORY], []
     monkeypatch.setattr(story_gen, "_story_via_ollama",
-                        lambda system, user, model, seed=None: asked.append(user) or answers.pop(0))
+                        lambda system, user, model, seed=None, **k: asked.append(user) or answers.pop(0))
     story, _ = story_gen.generate_story("x", "general", "terror", 4, "fake", tmp_path / "a")
     assert story.protagonist == STORY.protagonist and len(asked) == 2
     assert "REMINDER" not in asked[0] and "REMINDER" in asked[1]
@@ -64,13 +68,31 @@ def test_spanish_picture_fields_get_one_retry(tmp_path, monkeypatch):
     assert story.protagonist == "un joven con una linterna" and len(asked) == 4
 
 
+def test_pictures_pass_rewrites_the_scene_fields_in_english(monkeypatch):
+    from cuento import story_gen
+    from cuento.story_gen import Picture, Pictures
+    pic = dict(action="a huge shadow glides under the water", setting="river bed, noon",
+               key_object="shadow", shot="wide shot, murky light")
+    spanish = Pictures(pictures=[Picture(index=i, **{**pic, "key_object": "una sombra"}) for i in (1, 2, 3, 4)])
+    good = Pictures(pictures=[Picture(index=i, **pic) for i in (4, 3, 2, 1)])
+    answers, asked = [spanish, good], []
+    monkeypatch.setattr(story_gen, "_ask", lambda prov, system, user, model, seed, schema: (
+        asked.append((user, schema)) or answers.pop(0)))
+    story = story_gen._pictures(STORY, "ollama", "fake", 3)
+    assert [s.action for s in story.scenes] == [pic["action"]] * 4 and story.scenes[0].narration == STORY.scenes[0].narration
+    assert len(asked) == 2 and asked[0][1] is Pictures and "REMINDER" in asked[1][0] and STORY.protagonist in asked[0][0]
+    # an incomplete answer twice: the story's own fields stay
+    answers[:] = [Pictures(pictures=[]), Pictures(pictures=[])]
+    assert story_gen._pictures(STORY, "ollama", "fake", None) == STORY
+
+
 def test_prompts_follow_tone_and_photo():
     kids = system_prompt("infantil", "aventura", 6, "es", False)
     assert "exactly 6 scenes" in kids and "moral" in kids and "español" in kids
     horror = system_prompt("general", "terror", 5, "es", True)
     assert "horror" in horror and "never their face" in horror and "twist" in horror
     assert "real story" not in horror and "real story" in system_prompt("general", "terror", 5, "es", False, adapted=True)
-    assert '"key_object"' in kids and "narrator IS the protagonist" in kids
+    assert '"key_object"' in kids and "narrator IS the protagonist" in kids and "THAT thing itself" in kids
     from cuento.story_gen import user_prompt
     prompt = user_prompt("x", "general", "terror", 5, SOURCE)
     assert SOURCE["title"] in prompt and "Being married" in prompt
@@ -86,6 +108,7 @@ def test_preview_then_continue_with_reddit_source(tmp_path, monkeypatch):
     monkeypatch.setattr(pipeline, "resolve_text_backend", lambda p, m: ("ollama", "fake"))
     llm_calls = []
     monkeypatch.setattr(story_gen, "_story_via_ollama", lambda *a, **k: llm_calls.append(1) or STORY)
+    monkeypatch.setattr(story_gen, "_pictures", lambda story, *a: story)
     monkeypatch.setattr(pipeline, "fetch_story", lambda url: {**SOURCE, "url": url})
     out = tmp_path / "output" / "cuento" / "switched-1"
     opts = dict(source=SOURCE["url"], scenes=4, test_mode=True, tts_provider="edge",
