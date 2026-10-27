@@ -25,20 +25,19 @@ STORY = Story(
 
 
 def test_scene_prompts_are_built_from_the_narration_fields():
-    from cuento.images import story_prompts
+    from cuento.images import story_prompt
     from cuento.config import default_style, negative_for
     sc = STORY.scenes[0]
     assert sc.visual() == "the protagonist looks up at birds, a sunny riverbank, morning, three swallows"
     assert STORY.scenes[1].visual().endswith("morning")  # empty key_object dropped
-    p1, p2 = story_prompts(sc, STORY.protagonist, "soft watercolor")
-    assert p1 == ("wide shot, soft light, hopeful, a small green turtle with a red scarf looks up at birds, "
-                  "a sunny riverbank, morning, three swallows")
-    assert p2 == "a small green turtle with a red scarf, soft watercolor"
+    assert story_prompt(sc, STORY.protagonist, "soft watercolor") == (
+        "wide shot, soft light, hopeful, a small green turtle with a red scarf looks up at birds, "
+        "a sunny riverbank, morning, three swallows, soft watercolor")
     # an action without "the protagonist" still gets the subject
     no_subject = sc.model_copy(update={"action": "looks up at birds"})
-    assert story_prompts(no_subject, "a turtle", "x")[0].startswith("wide shot, soft light, hopeful, a turtle looks up")
+    assert story_prompt(no_subject, "a turtle", "x").startswith("wide shot, soft light, hopeful, a turtle looks up")
     spanish = sc.model_copy(update={"action": "El protagonista mira a los pájaros"})
-    assert "a turtle mira a los pájaros" in story_prompts(spanish, "a turtle", "x")[0]
+    assert "a turtle mira a los pájaros" in story_prompt(spanish, "a turtle", "x")
     assert default_style("general", "terror", real_story=True) == "real" and default_style("general", "terror") == "oscuro"
     assert "cartoon" in negative_for("real") and "cartoon" not in negative_for("cine")
 
@@ -47,6 +46,22 @@ SOURCE = {"url": "https://www.reddit.com/r/shortscarystories/comments/abc/my_sto
           "title": "My wife and I switched places", "author": "ForgottenWell",
           "subreddit": "shortscarystories", "words": 120,
           "text": "Being married can be difficult. " * 20, "excerpt": "Being married"}
+
+
+def test_spanish_picture_fields_get_one_retry(tmp_path, monkeypatch):
+    from cuento import story_gen
+    monkeypatch.setattr(story_gen, "resolve_text_backend", lambda p, m: ("ollama", "fake"))
+    spanish = STORY.model_copy(update={"protagonist": "un joven con una linterna"})
+    answers, asked = [spanish, STORY], []
+    monkeypatch.setattr(story_gen, "_story_via_ollama",
+                        lambda system, user, model, seed=None: asked.append(user) or answers.pop(0))
+    story, _ = story_gen.generate_story("x", "general", "terror", 4, "fake", tmp_path / "a")
+    assert story.protagonist == STORY.protagonist and len(asked) == 2
+    assert "REMINDER" not in asked[0] and "REMINDER" in asked[1]
+    # still Spanish after the retry: kept, the run goes on
+    answers[:] = [spanish, spanish]
+    story, _ = story_gen.generate_story("y", "general", "terror", 4, "fake", tmp_path / "b")
+    assert story.protagonist == "un joven con una linterna" and len(asked) == 4
 
 
 def test_prompts_follow_tone_and_photo():
@@ -118,11 +133,11 @@ def test_generate_story_images_with_a_fake_sdxl(tmp_path, monkeypatch):
 
     monkeypatch.setattr(images, "_load_sdxl_txt2img", lambda torch, device: FakePipe())
     scenes = [Scene(index=1, scene_id="scene_01", persona=Persona(2, "x", "", "", "story"))]
-    prompts = {"scene_01": ("turtle, looks up", "wide shot, soft watercolor")}
+    prompts = {"scene_01": "wide shot, turtle looks up, soft watercolor"}
     got = []
     images.generate_story_images(scenes, prompts, tmp_path, 7, style="real", log=lambda *_: None,
                                  on_image=lambda sc, cached: got.append(cached))
-    assert calls[0]["prompt"] == "turtle, looks up" and calls[0]["prompt_2"] == "wide shot, soft watercolor"
+    assert calls[0]["prompt"] == "wide shot, turtle looks up, soft watercolor" and "prompt_2" not in calls[0]
     assert "cartoon" in calls[0]["negative_prompt"] and (calls[0]["width"], calls[0]["height"]) == images.SIZE
     assert scenes[0].image_path == tmp_path / "scene_01.png" and got == [False]
     images.generate_story_images(scenes, prompts, tmp_path, 7, style="real", log=lambda *_: None,

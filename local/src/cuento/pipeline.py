@@ -30,7 +30,7 @@ from escalator.tts import resolve_voice, synthesize_scenes
 from .config import (AUDIO_TRIGGER_DELAY, OUTPUT_ROOT, SCENE_END_DELAY, STYLE_PRESETS,
                      StoryOptions, default_style, style_fragment, validate)
 from .images import (credits_card, generate_story_images, placeholder_images,
-                     resolve_story_image_provider, silence_wav, story_prompts)
+                     resolve_story_image_provider, silence_wav, story_prompt)
 from .manifest import write_story_manifest
 from .sources import fetch_story
 from .story_gen import generate_story
@@ -149,10 +149,10 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
                                    language=options.language, seed=options.seed,
                                    has_photo=base_image is not None, keep=kept("text"),
                                    source=source)
-    prompts: dict[str, tuple[str, str]] = {}
+    prompts: dict[str, str] = {}
     for scene, src in zip(scenes, story.scenes):
         scene.speech_script = src.narration
-        prompts[scene.scene_id] = story_prompts(src, story.protagonist, fragment)
+        prompts[scene.scene_id] = story_prompt(src, story.protagonist, fragment)
         # with a photo the Kontext template supplies the person: scene + style only
         scene.persona = dataclasses.replace(
             scene.persona, image_detail=f"{src.visual()}, {src.shot}, {story.protagonist}, {fragment}")

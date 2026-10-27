@@ -46,8 +46,8 @@ STYLE_PRESETS = {
     "3d": ("Animación 3D", "3D animated film still, Pixar style, soft global illumination"),
     "cine": ("Cinematográfico",
              "cinematic photorealistic still, dramatic lighting, shallow depth of field"),
-    "oscuro": ("Ilustración oscura", "dark moody digital painting, muted palette, fog, chiaroscuro"),
-    "real": ("Foto realista", "color photograph, natural light, realistic skin and fabric textures, sharp focus, 35mm lens"),
+    "oscuro": ("Ilustración oscura", "dark moody digital painting, muted palette, chiaroscuro"),
+    "real": ("Foto realista", "color photograph, natural light, realistic textures, sharp focus, 35mm lens"),
 }
 IMAGE_PROVIDERS = ["auto", "sdxl", "flux-kontext"]   # sdxl: no photo; flux-kontext: with photo
 NEGATIVE = SDXL_NEGATIVE + ", text, letters, caption, signature"

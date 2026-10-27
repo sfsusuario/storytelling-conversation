@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import urllib.error
 import urllib.request
 from pathlib import Path
@@ -22,6 +23,11 @@ from .config import TONES
 from .sources import MAX_WORDS
 
 PROMPT_VERSION = "story-v3"
+# Spanish function words in a picture field mean the model ignored the
+# English rule (the image model only reads English): the story is asked again
+_SPANISH = re.compile(r"\b(un|una|unos|unas|el|la|los|las|con|de|del|en|por|para|que|y)\b", re.I)
+ENGLISH_REMINDER = ('\nREMINDER: "protagonist", "action", "setting", "key_object" and "shot" must be '
+                    'written in English even though the narration is not.')
 
 
 class StoryScene(BaseModel):
@@ -204,6 +210,12 @@ def _story_via_ollama(system: str, user: str, model: str, seed: int | None = Non
                                   "or use another model.") from e
 
 
+def _in_english(story: Story) -> bool:
+    fields = [story.protagonist] + [f"{s.action} {s.setting} {s.key_object} {s.shot}"
+                                    for s in story.scenes]
+    return not any(_SPANISH.search(f) for f in fields)
+
+
 def _normalize(story: Story, count: int) -> Story | None:
     """Scenes in order, exactly count of them with text; None when too few."""
     scenes = [s for s in sorted(story.scenes, key=lambda s: s.index)
@@ -243,19 +255,23 @@ def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
 
     story = unparseable = None
     for attempt in range(2 if provider == "ollama" else 1):
+        ask = user + ENGLISH_REMINDER if attempt else user
         if provider == "ollama":
             try:
-                raw = _story_via_ollama(system, user, model,
+                raw = _story_via_ollama(system, ask, model,
                                         None if seed is None else seed + attempt)
             except UnparseableRewrites as e:
                 unparseable = e
                 continue
         elif provider == "claude":
-            raw = _story_via_claude(system, user, model)
+            raw = _story_via_claude(system, ask, model)
         else:
-            raw = _story_via_gemini(system, user, model)
-        story = _normalize(raw, count)
-        if story is not None:
+            raw = _story_via_gemini(system, ask, model)
+        candidate = _normalize(raw, count)
+        if candidate is None:
+            continue
+        story = candidate
+        if _in_english(story):  # otherwise one more try; the last answer is kept
             break
     if story is None:
         if unparseable is not None:
