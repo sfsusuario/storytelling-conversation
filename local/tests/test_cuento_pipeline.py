@@ -14,7 +14,7 @@ from studio.history import read_cuento
 STORY = Story(
     outline="Una tortuga quiere volar, lo intenta, se cae y descubre que puede nadar.",
     title="Tula quiere volar",
-    protagonist="small green turtle with a red scarf, round eyes, tiny backpack",
+    protagonist="a small green turtle with a red scarf",
     scenes=[StoryScene(index=i + 1, narration=t, action=f"the protagonist {a}", setting="a sunny riverbank, morning",
                        key_object=k, shot="wide shot, soft light, hopeful")
             for i, (t, a, k) in enumerate([("Tula miraba a los pájaros.", "looks up at birds", "three swallows"),
@@ -30,9 +30,13 @@ def test_scene_prompts_are_built_from_the_narration_fields():
     sc = STORY.scenes[0]
     assert sc.visual() == "the protagonist looks up at birds, a sunny riverbank, morning, three swallows"
     assert STORY.scenes[1].visual().endswith("morning")  # empty key_object dropped
-    p1, p2 = story_prompts(sc.visual(), sc.shot, STORY.protagonist, "soft watercolor")
-    assert p1.startswith(STORY.protagonist) and "three swallows" in p1 and "watercolor" not in p1
-    assert p2 == "wide shot, soft light, hopeful, soft watercolor"
+    p1, p2 = story_prompts(sc, STORY.protagonist, "soft watercolor")
+    assert p1 == ("wide shot, soft light, hopeful, a small green turtle with a red scarf looks up at birds, "
+                  "a sunny riverbank, morning, three swallows")
+    assert p2 == "a small green turtle with a red scarf, soft watercolor"
+    # an action without "the protagonist" still gets the subject
+    no_subject = sc.model_copy(update={"action": "looks up at birds"})
+    assert story_prompts(no_subject, "a turtle", "x")[0].startswith("wide shot, soft light, hopeful, a turtle looks up")
     assert default_style("general", "terror", real_story=True) == "real" and default_style("general", "terror") == "oscuro"
     assert "cartoon" in negative_for("real") and "cartoon" not in negative_for("cine")
 

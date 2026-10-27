@@ -152,7 +152,7 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
     prompts: dict[str, tuple[str, str]] = {}
     for scene, src in zip(scenes, story.scenes):
         scene.speech_script = src.narration
-        prompts[scene.scene_id] = story_prompts(src.visual(), src.shot, story.protagonist, fragment)
+        prompts[scene.scene_id] = story_prompts(src, story.protagonist, fragment)
         # with a photo the Kontext template supplies the person: scene + style only
         scene.persona = dataclasses.replace(
             scene.persona, image_detail=f"{src.visual()}, {src.shot}, {story.protagonist}, {fragment}")

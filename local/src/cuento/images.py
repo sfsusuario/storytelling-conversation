@@ -8,6 +8,7 @@ Test mode draws flat colored placeholders with ffmpeg.
 from __future__ import annotations
 
 import gc
+import re
 import subprocess
 import traceback
 from pathlib import Path
@@ -44,11 +45,17 @@ def resolve_story_image_provider(provider: str, has_photo: bool) -> str:
     return "sdxl"
 
 
-def story_prompts(visual: str, shot: str, protagonist: str, style: str) -> tuple[str, str]:
+def story_prompts(scene, protagonist: str, style: str) -> tuple[str, str]:
     """(prompt, prompt_2) for SDXL's two text encoders, each capped at ~75
-    tokens: subject + action + setting + key object in the first, camera,
-    light and style in the second, so nothing gets truncated."""
-    return f"{protagonist}, {visual}", f"{shot}, {style}"
+    tokens. The first reads like a caption of the moment: shot, then the
+    protagonist doing the action, place, key object (a leading description
+    of the character makes SDXL paint a portrait and drop the scene). The
+    second repeats the character and adds the style."""
+    subject = re.sub(r"\bthe protagonist\b", protagonist, scene.action, flags=re.I)
+    if subject == scene.action:  # the model left the subject out
+        subject = f"{protagonist} {scene.action}"
+    parts = [scene.shot, subject, scene.setting, scene.key_object]
+    return ", ".join(p.strip() for p in parts if p and p.strip()), f"{protagonist}, {style}"
 
 
 def _load_sdxl_txt2img(torch, device: str):

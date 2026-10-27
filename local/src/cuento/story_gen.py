@@ -88,8 +88,10 @@ ADAPT_RULE = (
     "view and ending; compress it into the scenes, do not invent a different plot and do not add a "
     "moral unless the tone asks for one. Never mention Reddit, the author or that it is a post.")
 PROTAGONIST_RULES = {
-    False: ('fill "protagonist" in English with 12 to 20 purely visual words (species or age, outfit, '
-            'colors, one distinctive trait), no name; it is reused in every image.'),
+    False: ('fill "protagonist" in English with a short noun phrase (8 words at most) that fits inside a '
+            'sentence: article + age or species + gender + one distinctive garment or trait, like "a tired '
+            'man in a grey hoodie" or "a small green turtle with a red scarf"; no name, no facial details; '
+            'it is reused in every image.'),
     True: ('a real person\'s photo plays the protagonist: fill "protagonist" with their role and outfit '
            'only (12 words at most, in English), never their face, age, hair or body.'),
 }

@@ -47,11 +47,11 @@ STYLE_PRESETS = {
     "cine": ("Cinematográfico",
              "cinematic photorealistic still, dramatic lighting, shallow depth of field"),
     "oscuro": ("Ilustración oscura", "dark moody digital painting, muted palette, fog, chiaroscuro"),
-    "real": ("Foto realista", "candid photograph, natural light, realistic skin and fabric textures, 35mm lens, documentary"),
+    "real": ("Foto realista", "color photograph, natural light, realistic skin and fabric textures, sharp focus, 35mm lens"),
 }
 IMAGE_PROVIDERS = ["auto", "sdxl", "flux-kontext"]   # sdxl: no photo; flux-kontext: with photo
 NEGATIVE = SDXL_NEGATIVE + ", text, letters, caption, signature"
-NEGATIVE_REAL = NEGATIVE + ", cartoon, illustration, painting, 3d render, anime"
+NEGATIVE_REAL = NEGATIVE + ", cartoon, illustration, painting, 3d render, anime, black and white, monochrome, grayscale"
 CREDITS_TITLE = "Historias de Reddit"   # end card of a story taken from Reddit
 
 
