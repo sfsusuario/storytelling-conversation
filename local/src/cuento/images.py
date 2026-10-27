@@ -51,6 +51,18 @@ def story_prompts(visual: str, shot: str, protagonist: str, style: str) -> tuple
     return f"{protagonist}, {visual}", f"{shot}, {style}"
 
 
+def _load_sdxl_txt2img(torch, device: str):
+    from diffusers import StableDiffusionXLPipeline
+    from diffusers.models.attention_processor import AttnProcessor
+
+    # bf16, not fp16: the fp16 SDXL VAE overflows into NaN (black images).
+    pipe = StableDiffusionXLPipeline.from_pretrained(
+        SDXL_REPO, torch_dtype=torch.bfloat16, variant="fp16")
+    # SDPA attention returns NaN (black images) on XPU; the classic processor works.
+    pipe.unet.set_attn_processor(AttnProcessor())
+    return pipe.to(device)
+
+
 def generate_story_images(scenes: list[Scene], prompts: dict[str, tuple[str, str]],
                           images_dir: Path, seed: int | None, style: str = "",
                           log: Callable = print, on_image: Callable | None = None,

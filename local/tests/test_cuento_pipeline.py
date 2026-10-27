@@ -94,6 +94,39 @@ def test_preview_then_continue_with_reddit_source(tmp_path, monkeypatch):
     assert runs[0]["meta"]["fuente"] == "r/shortscarystories · u/ForgottenWell"
 
 
+def test_generate_story_images_with_a_fake_sdxl(tmp_path, monkeypatch):
+    """The SDXL path without a model: prompts, stamps, cache and callbacks."""
+    pytest.importorskip("torch")
+    from PIL import Image
+
+    from cuento import images
+    from escalator.models import Persona, Scene
+
+    calls = []
+
+    class FakePipe:
+        def __call__(self, **kw):
+            calls.append(kw)
+            kw["callback_on_step_end"](type("P", (), {"num_timesteps": 2})(), 0, 0, {})
+            return type("R", (), {"images": [Image.new("RGB", (8, 8), "red")]})()
+
+    monkeypatch.setattr(images, "_load_sdxl_txt2img", lambda torch, device: FakePipe())
+    scenes = [Scene(index=1, scene_id="scene_01", persona=Persona(2, "x", "", "", "story"))]
+    prompts = {"scene_01": ("turtle, looks up", "wide shot, soft watercolor")}
+    got = []
+    images.generate_story_images(scenes, prompts, tmp_path, 7, style="real", log=lambda *_: None,
+                                 on_image=lambda sc, cached: got.append(cached))
+    assert calls[0]["prompt"] == "turtle, looks up" and calls[0]["prompt_2"] == "wide shot, soft watercolor"
+    assert "cartoon" in calls[0]["negative_prompt"] and (calls[0]["width"], calls[0]["height"]) == images.SIZE
+    assert scenes[0].image_path == tmp_path / "scene_01.png" and got == [False]
+    images.generate_story_images(scenes, prompts, tmp_path, 7, style="real", log=lambda *_: None,
+                                 on_image=lambda sc, cached: got.append(cached))
+    assert len(calls) == 1 and got == [False, True]  # same prompt and seed: cached
+    images.generate_story_images(scenes, prompts, tmp_path, 7, style="real", log=lambda *_: None,
+                                 variants={"scene_01": 1})
+    assert len(calls) == 2  # a reroll regenerates
+
+
 @pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg missing")
 def test_run_story_test_mode(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
