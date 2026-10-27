@@ -51,7 +51,7 @@ def story_prompts(scene, protagonist: str, style: str) -> tuple[str, str]:
     protagonist doing the action, place, key object (a leading description
     of the character makes SDXL paint a portrait and drop the scene). The
     second repeats the character and adds the style."""
-    subject = re.sub(r"\bthe protagonist\b", protagonist, scene.action, flags=re.I)
+    subject = re.sub(r"\b(the|el|la) protagonista?\b", protagonist, scene.action, count=1, flags=re.I)
     if subject == scene.action:  # the model left the subject out
         subject = f"{protagonist} {scene.action}"
     parts = [scene.shot, subject, scene.setting, scene.key_object]

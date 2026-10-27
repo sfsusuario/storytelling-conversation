@@ -37,6 +37,8 @@ def test_scene_prompts_are_built_from_the_narration_fields():
     # an action without "the protagonist" still gets the subject
     no_subject = sc.model_copy(update={"action": "looks up at birds"})
     assert story_prompts(no_subject, "a turtle", "x")[0].startswith("wide shot, soft light, hopeful, a turtle looks up")
+    spanish = sc.model_copy(update={"action": "El protagonista mira a los pájaros"})
+    assert "a turtle mira a los pájaros" in story_prompts(spanish, "a turtle", "x")[0]
     assert default_style("general", "terror", real_story=True) == "real" and default_style("general", "terror") == "oscuro"
     assert "cartoon" in negative_for("real") and "cartoon" not in negative_for("cine")
 

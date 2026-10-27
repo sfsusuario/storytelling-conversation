@@ -60,11 +60,14 @@ sentences read aloud by a narrator: no quotes, emojis, markdown or stage directi
 scene moves the story forward; the last one closes it.
 Protagonist: {protagonist_rule} The protagonist appears in EVERY scene's picture; in a first-person story \
 the narrator IS the protagonist.
-Each scene's picture, in English, taken literally from that scene's narration (no new events): "action" \
-= what the protagonist is doing at that exact moment, present tense, 12 words at most, say "the protagonist"; \
-"setting" = place and time of day, 8 words at most; "key_object" = the one object, creature or detail the \
-narration hinges on, 5 words at most, or "" if none; "shot" = camera distance (wide, medium, close-up), \
-light and mood, 8 words at most. Never names, never text, letters, signs or speech bubbles.
+Each scene's picture is taken literally from that scene's narration (no new events) and is written in \
+ENGLISH, always, whatever the narration's language, because the image model only reads English: "action" \
+= what the protagonist is doing at that exact moment, present tense, 12 words at most, starting with \
+"the protagonist"; "setting" = place and time of day, 8 words at most; "key_object" = the one object, \
+creature or detail the narration hinges on, 5 words at most, or "" if none; "shot" = camera distance, \
+light and mood, 8 words at most: mostly "wide shot" or "medium shot" so the place and the action are \
+visible, "close-up" only when the scene is about a small detail. "protagonist" is in English too. Never \
+names, never text, letters, signs or speech bubbles.
 Also fill "title" (in {language}, 6 words at most), "caption" (one hook line in {language} for the video \
 description) and "hashtags" (6 to 8, without #).
 Answer only with the JSON object.\
