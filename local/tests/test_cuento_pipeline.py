@@ -15,10 +15,26 @@ STORY = Story(
     outline="Una tortuga quiere volar, lo intenta, se cae y descubre que puede nadar.",
     title="Tula quiere volar",
     protagonist="small green turtle with a red scarf, round eyes, tiny backpack",
-    scenes=[StoryScene(index=i + 1, narration=t, image_prompt=f"the protagonist {t.lower()}")
-            for i, t in enumerate(["Tula miraba a los pájaros.", "Subió a una roca y saltó.",
-                                   "Cayó al río y se asustó.", "Descubrió que nadar es su forma de volar."])],
+    scenes=[StoryScene(index=i + 1, narration=t, action=f"the protagonist {a}", setting="a sunny riverbank, morning",
+                       key_object=k, shot="wide shot, soft light, hopeful")
+            for i, (t, a, k) in enumerate([("Tula miraba a los pájaros.", "looks up at birds", "three swallows"),
+                                           ("Subió a una roca y saltó.", "jumps off a rock", ""),
+                                           ("Cayó al río y se asustó.", "splashes into the river", "river"),
+                                           ("Descubrió que nadar es su forma de volar.", "glides underwater", "")])],
     caption="¿Y si tu forma de volar fuera otra?", hashtags=["cuento", "tortuga"])
+
+
+def test_scene_prompts_are_built_from_the_narration_fields():
+    from cuento.images import story_prompts
+    from cuento.config import default_style, negative_for
+    sc = STORY.scenes[0]
+    assert sc.visual() == "the protagonist looks up at birds, a sunny riverbank, morning, three swallows"
+    assert STORY.scenes[1].visual().endswith("morning")  # empty key_object dropped
+    p1, p2 = story_prompts(sc.visual(), sc.shot, STORY.protagonist, "soft watercolor")
+    assert p1.startswith(STORY.protagonist) and "three swallows" in p1 and "watercolor" not in p1
+    assert p2 == "wide shot, soft light, hopeful, soft watercolor"
+    assert default_style("general", "terror", real_story=True) == "real" and default_style("general", "terror") == "oscuro"
+    assert "cartoon" in negative_for("real") and "cartoon" not in negative_for("cine")
 
 
 SOURCE = {"url": "https://www.reddit.com/r/shortscarystories/comments/abc/my_story/",
@@ -33,6 +49,7 @@ def test_prompts_follow_tone_and_photo():
     horror = system_prompt("general", "terror", 5, "es", True)
     assert "horror" in horror and "never their face" in horror and "twist" in horror
     assert "real story" not in horror and "real story" in system_prompt("general", "terror", 5, "es", False, adapted=True)
+    assert '"key_object"' in kids and "narrator IS the protagonist" in kids
     from cuento.story_gen import user_prompt
     prompt = user_prompt("x", "general", "terror", 5, SOURCE)
     assert SOURCE["title"] in prompt and "Being married" in prompt

@@ -36,7 +36,8 @@ def write_story_manifest(options: StoryOptions, story: Story, timeline: Timeline
             "Assets": {"image": _rel(scene.image_path, output_dir),
                        "audio": _rel(scene.audio_path, output_dir),
                        "clip": _rel(scene.clip_path, output_dir)},
-            "Story_Image_Prompt": src.image_prompt,
+            "Shot": {"action": src.action, "setting": src.setting,
+                     "key_object": src.key_object, "shot": src.shot},
         })
     manifest = {
         "Generated_At": datetime.now().isoformat(timespec="seconds"),

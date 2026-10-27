@@ -47,16 +47,24 @@ STYLE_PRESETS = {
     "cine": ("Cinematográfico",
              "cinematic photorealistic still, dramatic lighting, shallow depth of field"),
     "oscuro": ("Ilustración oscura", "dark moody digital painting, muted palette, fog, chiaroscuro"),
+    "real": ("Foto realista", "candid photograph, natural light, realistic skin and fabric textures, 35mm lens, documentary"),
 }
 IMAGE_PROVIDERS = ["auto", "sdxl", "flux-kontext"]   # sdxl: no photo; flux-kontext: with photo
 NEGATIVE = SDXL_NEGATIVE + ", text, letters, caption, signature"
+NEGATIVE_REAL = NEGATIVE + ", cartoon, illustration, painting, 3d render, anime"
 CREDITS_TITLE = "Historias de Reddit"   # end card of a story taken from Reddit
 
 
-def default_style(tone: str, genre: str) -> str:
+def default_style(tone: str, genre: str, real_story: bool = False) -> str:
+    if real_story:
+        return "real"      # a Reddit story happened: show it like a photo
     if tone == "infantil":
         return "acuarela"
     return "oscuro" if genre == "terror" else "cine"
+
+
+def negative_for(style: str) -> str:
+    return NEGATIVE_REAL if style == "real" else NEGATIVE
 
 
 def style_fragment(style: str) -> str:

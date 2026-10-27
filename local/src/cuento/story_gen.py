@@ -21,13 +21,23 @@ from escalator.text_gen import (TextGenError, UnparseableRewrites, _format_socia
 from .config import TONES
 from .sources import MAX_WORDS
 
-PROMPT_VERSION = "story-v2"
+PROMPT_VERSION = "story-v3"
 
 
 class StoryScene(BaseModel):
     index: int
     narration: str
-    image_prompt: str
+    # the picture, taken from the narration: filled as separate fields so a
+    # small model covers each one instead of writing a loose sentence
+    action: str       # what the protagonist does at this exact moment
+    setting: str      # where, time of day
+    key_object: str   # the one object or detail the narration hinges on ("" if none)
+    shot: str         # camera distance, light, mood
+
+    def visual(self) -> str:
+        """The scene's picture in one line (subject added by the caller)."""
+        parts = [self.action, self.setting, self.key_object]
+        return ", ".join(p.strip() for p in parts if p and p.strip())
 
 
 class Story(BaseModel):
@@ -48,10 +58,13 @@ First fill "outline": one sentence with the protagonist, what they want, the obs
 Narration rules: every scene's "narration" is written in {language}, {max_words} words at most, one or two \
 sentences read aloud by a narrator: no quotes, emojis, markdown or stage directions. Keep one tense. Every \
 scene moves the story forward; the last one closes it.
-Protagonist: {protagonist_rule}
-"image_prompt": in English, 20 to 30 words, only this scene's moment: the action, the place, the shot (wide, \
-medium or close-up), the light and the mood. Call the main character "the protagonist"; never names, never \
-text, letters, signs or speech bubbles.
+Protagonist: {protagonist_rule} The protagonist appears in EVERY scene's picture; in a first-person story \
+the narrator IS the protagonist.
+Each scene's picture, in English, taken literally from that scene's narration (no new events): "action" \
+= what the protagonist is doing at that exact moment, present tense, 12 words at most, say "the protagonist"; \
+"setting" = place and time of day, 8 words at most; "key_object" = the one object, creature or detail the \
+narration hinges on, 5 words at most, or "" if none; "shot" = camera distance (wide, medium, close-up), \
+light and mood, 8 words at most. Never names, never text, letters, signs or speech bubbles.
 Also fill "title" (in {language}, 6 words at most), "caption" (one hook line in {language} for the video \
 description) and "hashtags" (6 to 8, without #).
 Answer only with the JSON object.\
@@ -189,11 +202,10 @@ def _story_via_ollama(system: str, user: str, model: str, seed: int | None = Non
 def _normalize(story: Story, count: int) -> Story | None:
     """Scenes in order, exactly count of them with text; None when too few."""
     scenes = [s for s in sorted(story.scenes, key=lambda s: s.index)
-              if s.narration.strip() and s.image_prompt.strip()]
+              if s.narration.strip() and s.action.strip()]
     if len(scenes) < count:
         return None
-    scenes = [StoryScene(index=i + 1, narration=s.narration.strip(),
-                         image_prompt=s.image_prompt.strip())
+    scenes = [s.model_copy(update={"index": i + 1, "narration": s.narration.strip()})
               for i, s in enumerate(scenes[:count])]
     return story.model_copy(update={"scenes": scenes})
 

@@ -19,7 +19,7 @@ from escalator.image_local import (DRIVER_HINT, INSTALL_HINT, SDXL_REPO, _device
 from escalator.models import Scene
 from escalator.renderer import _drawtext_escape
 
-from .config import CREDITS_TITLE, NEGATIVE
+from .config import CREDITS_TITLE, NEGATIVE, negative_for
 
 SIZE = (832, 1216)    # SDXL 9:16 bucket; the renderer crops it to the frame
 STEPS, CFG = 30, 7.0
@@ -44,38 +44,31 @@ def resolve_story_image_provider(provider: str, has_photo: bool) -> str:
     return "sdxl"
 
 
-def story_prompt(scene_prompt: str, protagonist: str, style: str) -> str:
-    # the scene first: CLIP keeps ~75 tokens, the style tail may be clipped
-    return f"{scene_prompt}, {protagonist}, {style}"
+def story_prompts(visual: str, shot: str, protagonist: str, style: str) -> tuple[str, str]:
+    """(prompt, prompt_2) for SDXL's two text encoders, each capped at ~75
+    tokens: subject + action + setting + key object in the first, camera,
+    light and style in the second, so nothing gets truncated."""
+    return f"{protagonist}, {visual}", f"{shot}, {style}"
 
 
-def _load_sdxl_txt2img(torch, device: str):
-    from diffusers import StableDiffusionXLPipeline
-    from diffusers.models.attention_processor import AttnProcessor
-
-    # bf16, not fp16: the fp16 SDXL VAE overflows into NaN (black images).
-    pipe = StableDiffusionXLPipeline.from_pretrained(
-        SDXL_REPO, torch_dtype=torch.bfloat16, variant="fp16")
-    # SDPA attention returns NaN (black images) on XPU; the classic processor works.
-    pipe.unet.set_attn_processor(AttnProcessor())
-    return pipe.to(device)
-
-
-def generate_story_images(scenes: list[Scene], images_dir: Path, seed: int | None,
+def generate_story_images(scenes: list[Scene], prompts: dict[str, tuple[str, str]],
+                          images_dir: Path, seed: int | None, style: str = "",
                           log: Callable = print, on_image: Callable | None = None,
                           on_step: Callable | None = None,
                           variants: dict[str, int] | None = None,
                           keep: bool = False) -> None:
-    """One SDXL image per scene from scene.persona.image_detail (the full
-    prompt). Each image carries a .meta stamp so a new prompt or seed
-    regenerates it; a reroll bumps the scene's variant (new seed)."""
+    """One SDXL image per scene from prompts[scene_id] = (prompt, prompt_2).
+    Each image carries a .meta stamp so a new prompt or seed regenerates it;
+    a reroll bumps the scene's variant (new seed)."""
+    negative = negative_for(style)
     images_dir.mkdir(parents=True, exist_ok=True)
     variants = variants or {}
     pending = []
     for scene in scenes:
         out = images_dir / f"{scene.scene_id}.png"
-        prompt = scene.visual_style_prompt = scene.persona.image_detail
-        stamp = f"sdxl|txt2img-v1-{SIZE[0]}x{SIZE[1]}-{STEPS}-{CFG}|{seed}|{prompt}"
+        p1, p2 = prompts[scene.scene_id]
+        scene.visual_style_prompt = f"{p1} | {p2}"
+        stamp = f"sdxl|txt2img-v2-{SIZE[0]}x{SIZE[1]}-{STEPS}-{CFG}|{seed}|{p1}|{p2}|{negative}"
         if variants.get(scene.scene_id):
             stamp += f"|v{variants[scene.scene_id]}"
         meta = out.with_suffix(".meta")
@@ -86,7 +79,7 @@ def generate_story_images(scenes: list[Scene], images_dir: Path, seed: int | Non
             if on_image:
                 on_image(scene, True)
             continue
-        pending.append((scene, out, meta, stamp))
+        pending.append((scene, out, meta, stamp, p1, p2))
     if not pending:
         return
 
@@ -112,16 +105,16 @@ def generate_story_images(scenes: list[Scene], images_dir: Path, seed: int | Non
             raise ImageGenError(DRIVER_HINT.format(error=e)) from e
         raise
     try:
-        for scene, out, meta, stamp in pending:
+        for scene, out, meta, stamp, p1, p2 in pending:
             def step_cb(p, i, t, kw, scene=scene):
                 if on_step:
                     on_step(scene, i + 1, p.num_timesteps, "pasos")
                 return kw
             generator = torch.Generator("cpu").manual_seed(
                 scene_seed(seed, scene.scene_id, variants.get(scene.scene_id, 0)))
-            image = pipe(prompt=scene.persona.image_detail, negative_prompt=NEGATIVE,
-                         width=SIZE[0], height=SIZE[1], num_inference_steps=STEPS,
-                         guidance_scale=CFG, generator=generator,
+            image = pipe(prompt=p1, prompt_2=p2, negative_prompt=negative,
+                         negative_prompt_2=negative, width=SIZE[0], height=SIZE[1],
+                         num_inference_steps=STEPS, guidance_scale=CFG, generator=generator,
                          callback_on_step_end=step_cb).images[0]
             tmp = out.with_suffix(".tmp.png")
             image.save(tmp)

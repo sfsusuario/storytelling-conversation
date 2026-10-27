@@ -71,7 +71,7 @@ def create_app():
             "tones": [{"id": t, "label": label,
                        "genres": [{"id": g, "label": gl} for g, (gl, _) in genres.items()]}
                       for t, (label, _, genres) in TONES.items()],
-            "styles": [{"id": "auto", "label": "Automático (según el tono)"}]
+            "styles": [{"id": "auto", "label": "Automático (según el tono; foto realista si es de Reddit)"}]
                       + [{"id": s, "label": label} for s, (label, _) in STYLE_PRESETS.items()],
             "languages": [{"code": c, "name": n} for c, n in LANGUAGE_NAMES.items()],
             "voices": {"kokoro": KOKORO_VOICES, "edge": CURATED_VOICES},

@@ -30,7 +30,7 @@ from escalator.tts import resolve_voice, synthesize_scenes
 from .config import (AUDIO_TRIGGER_DELAY, OUTPUT_ROOT, SCENE_END_DELAY, STYLE_PRESETS,
                      StoryOptions, default_style, style_fragment, validate)
 from .images import (credits_card, generate_story_images, placeholder_images,
-                     resolve_story_image_provider, silence_wav, story_prompt)
+                     resolve_story_image_provider, silence_wav, story_prompts)
 from .manifest import write_story_manifest
 from .sources import fetch_story
 from .story_gen import generate_story
@@ -61,7 +61,8 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
     validate(options)
     if options.base_image and not Path(options.base_image).is_file():
         raise FileNotFoundError(f"Protagonist photo not found: {options.base_image}")
-    style = default_style(options.tone, options.genre) if options.style == "auto" else options.style
+    style = (default_style(options.tone, options.genre, real_story=bool(options.source))
+             if options.style == "auto" else options.style)
     fragment = style_fragment(style)
 
     def emit(event_type: str, **data) -> None:
@@ -148,11 +149,13 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
                                    language=options.language, seed=options.seed,
                                    has_photo=base_image is not None, keep=kept("text"),
                                    source=source)
+    prompts: dict[str, tuple[str, str]] = {}
     for scene, src in zip(scenes, story.scenes):
         scene.speech_script = src.narration
-        prompt = (f"{src.image_prompt}, {story.protagonist}, {fragment}" if base_image
-                  else story_prompt(src.image_prompt, story.protagonist, fragment))
-        scene.persona = dataclasses.replace(scene.persona, image_detail=prompt)
+        prompts[scene.scene_id] = story_prompts(src.visual(), src.shot, story.protagonist, fragment)
+        # with a photo the Kontext template supplies the person: scene + style only
+        scene.persona = dataclasses.replace(
+            scene.persona, image_detail=f"{src.visual()}, {src.shot}, {story.protagonist}, {fragment}")
         log(f'  escena {scene.index}: "{src.narration}"')
         emit("scene", scene_id=scene.scene_id, kind="text", text=src.narration)
     (output_dir / "social.txt").write_text(social, encoding="utf-8")
@@ -184,8 +187,8 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
                                   on_step=step_event("images"), variants=variants,
                                   keep=kept("images"))
         else:
-            generate_story_images(scenes, images_dir, options.seed, log=log,
-                                  on_image=scene_event("image"),
+            generate_story_images(scenes, prompts, images_dir, options.seed, style=style,
+                                  log=log, on_image=scene_event("image"),
                                   on_step=step_event("images"), variants=variants,
                                   keep=kept("images"))
 
