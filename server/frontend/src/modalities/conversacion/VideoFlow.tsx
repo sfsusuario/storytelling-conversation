@@ -121,7 +121,9 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
 
   useEffect(() => {
     if (videoResult && step === "render") setStep("done");
-  }, [videoResult, step]);
+    // "done" saved in localStorage but its job is gone (studio restarted): the card would render nothing
+    else if (!videoResult && step === "done" && (!renderJob || render.done)) setStep(renderJob ? "render" : "topic");
+  }, [videoResult, step, renderJob, render.done]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Modo automático: chain script -> voice -> video without stopping
   useEffect(() => {
@@ -348,6 +350,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
           {renderError && (
             <div className="actions">
               <button className="ghost" onClick={() => setStep("script")}>← Volver al guion</button>
+              <button className="primary" onClick={restart}>➕ Otro video</button>
             </div>
           )}
         </div>
