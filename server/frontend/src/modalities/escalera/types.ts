@@ -41,6 +41,8 @@ export interface Options {
   motion: string;
   reroll_images: string[];
   reroll_motion: string[];
+  /** The user's own prompt for a scene's image reroll, by scene id. */
+  image_prompts?: Record<string, string>;
 }
 
 export interface StyleSet {
@@ -89,7 +91,7 @@ export type RunEvent = { ts: number } & (
   | { type: "scenes"; style_set: string; output_dir: string; scenes: { scene_id: string; level: number; persona: string }[] }
   | { type: "stage"; index: number; total: number; name: StageName; detail: string }
   | { type: "scene"; scene_id: string; kind: "text"; text: string }
-  | { type: "scene"; scene_id: string; kind: "image" | "audio" | "motion" | "clip"; cached: boolean; path_url: string | null }
+  | { type: "scene"; scene_id: string; kind: "image" | "audio" | "motion" | "clip"; cached: boolean; path_url: string | null; prompt?: string }
   | { type: "progress"; stage: StageName; scene_id: string | null; step: number; total: number; label: string }
   | { type: "log"; line: string }
   // Cuento only: the written story, before the images (a preview run ends right after it)
@@ -98,5 +100,7 @@ export type RunEvent = { ts: number } & (
   | { type: "error"; message: string; kind: string }
   | { type: "cancelled" }
   | { type: "queued"; scene_id: string; kind: "image" | "motion" }
+  // the running pipeline took a queued reroll: it is redone right now
+  | { type: "rerolling"; scene_id: string; kind: "image" | "motion" }
   | { type: "next"; run_id: string }
 );

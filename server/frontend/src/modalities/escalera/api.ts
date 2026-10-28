@@ -32,11 +32,11 @@ export const api = {
       body: JSON.stringify({ upload_id, options }),
     }).then((r) => json<{ run_id: string }>(r)),
   cancel: (runId: string) => fetch(`/m/escalera/api/runs/${runId}/cancel`, { method: "POST" }),
-  reroll: (runId: string, scene_id: string, kind: "image" | "motion") =>
+  reroll: (runId: string, scene_id: string, kind: "image" | "motion", prompt?: string) =>
     fetch(`/m/escalera/api/runs/${runId}/reroll`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scene_id, kind }),
+      body: JSON.stringify({ scene_id, kind, prompt }),
     }).then((r) => json<{ queued?: boolean; run_id?: string }>(r)),
   regenerateHistory: (name: string, force_from: string, motion: string) =>
     fetch(`/m/escalera/api/history/${encodeURIComponent(name)}/regenerate`, {

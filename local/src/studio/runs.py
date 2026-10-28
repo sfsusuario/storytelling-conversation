@@ -4,14 +4,17 @@
 One pipeline at a time per modality (one GPU) in a worker thread. Its
 structured events are kept per run and streamed over SSE, so a reloaded page
 or another device replays them from the start (or from Last-Event-ID) and
-keeps following. Rerolls asked for while a run works are queued and redone by
-a follow-up run; retry and cancel work the same way for every modality.
+keeps following. Rerolls asked for while a run works are queued: a pipeline
+that takes a `rerolls` argument redoes them as soon as the scene in progress
+ends; whatever is still queued at the end goes to a follow-up run. Retry and
+cancel work the same way for every modality.
 
 A modality hands each Run its pipeline function, the exception that pipeline
 raises when cancelled, the URL mapper for the files it hands out and its own
 registry (so one modality's run never blocks another's).
 """
 import dataclasses
+import inspect
 import json
 import threading
 import time
@@ -52,8 +55,9 @@ class Run:
         self.cond = threading.Condition()
         self.cancel = threading.Event()
         self.started = time.time()
-        # Rerolls asked for while this run works: redone by a follow-up run.
-        self.queued: dict[str, list[str]] = {"image": [], "motion": []}
+        # Rerolls asked for while this run works: {kind: {scene_id: prompt}}
+        # ("" = keep the prompt), taken live by the pipeline or chained.
+        self.queued: dict[str, dict[str, str]] = {"image": {}, "motion": {}}
 
     @property
     def status(self) -> str:
@@ -73,18 +77,30 @@ class Run:
     def start(self) -> None:
         threading.Thread(target=self._work, daemon=True).start()
 
-    def queue_reroll(self, scene_id: str, kind: str) -> None:
+    def queue_reroll(self, scene_id: str, kind: str, prompt: str = "") -> None:
         with self.cond:
-            if scene_id not in self.queued[kind]:
-                self.queued[kind].append(scene_id)
+            if prompt or scene_id not in self.queued[kind]:
+                self.queued[kind][scene_id] = prompt
         self.push({"type": "queued", "scene_id": scene_id, "kind": kind})
 
-    def follow_up(self, reroll_images=(), reroll_motion=()) -> "Run":
+    def pending(self, kind: str) -> bool:
+        return bool(self.queued[kind])
+
+    def take(self, kind: str) -> dict[str, str]:
+        """The queued rerolls of one kind, handed to the running pipeline."""
+        with self.cond:
+            taken, self.queued[kind] = self.queued[kind], {}
+        for scene_id in taken:
+            self.push({"type": "rerolling", "scene_id": scene_id, "kind": kind})
+        return taken
+
+    def follow_up(self, reroll_images=(), reroll_motion=(), prompts=None) -> "Run":
         """A new run with these options that redoes only the given scenes;
         everything else comes from the cache."""
+        extra = {"image_prompts": prompts} if prompts else {}
         options = dataclasses.replace(self.options, force=False, force_from=None,
                                       reroll_images=list(reroll_images),
-                                      reroll_motion=list(reroll_motion))
+                                      reroll_motion=list(reroll_motion), **extra)
         run = Run(options, self.upload_id, registry=self.registry,
                   pipeline=self.pipeline, cancelled=self.cancelled, url=self.url)
         self.registry[run.id] = run
@@ -96,9 +112,10 @@ class Run:
         and announce it, so the browser switches to it."""
         with self.cond:
             images, motion = self.queued["image"], self.queued["motion"]
-            self.queued = {"image": [], "motion": []}
+            self.queued = {"image": {}, "motion": {}}
         if images or motion:
-            self.push({"type": "next", "run_id": self.follow_up(images, motion).id})
+            prompts = {k: v for k, v in images.items() if v}
+            self.push({"type": "next", "run_id": self.follow_up(list(images), list(motion), prompts).id})
 
     def _on_event(self, event: dict) -> None:
         if event.get("type") == "done":
@@ -108,11 +125,12 @@ class Run:
     def _work(self) -> None:
         self.push({"type": "started", "run_id": self.id,
                    "upload_id": self.upload_id})
+        live = {"rerolls": self} if "rerolls" in inspect.signature(self.pipeline).parameters else {}
         try:
             self.pipeline(self.options,
                           on_progress=lambda line: self.push(
                               {"type": "log", "line": str(line)}),
-                          on_event=self._on_event, cancel=self.cancel)
+                          on_event=self._on_event, cancel=self.cancel, **live)
         except self.cancelled:
             self.push({"type": "cancelled"})  # a cancel drops queued rerolls too
         except Exception as e:  # reported to the browser, never swallowed
@@ -175,14 +193,21 @@ def add_run_routes(app, registry: dict) -> None:
         run = get_run(run_id)
         body = await request.json()
         scene_id, kind = str(body.get("scene_id", "")), body.get("kind")
+        prompt = body.get("prompt") or ""
         if kind not in ("image", "motion") or not scene_id:
             raise HTTPException(400, "expected scene_id and kind image|motion")
+        if not isinstance(prompt, str) or len(prompt) > 2000:
+            raise HTTPException(400, "prompt must be text up to 2000 characters")
+        prompt = prompt.strip()
+        if prompt and (kind != "image" or not hasattr(run.options, "image_prompts")):
+            raise HTTPException(400, "this modality does not take an image prompt")
         if run.status == "running":
-            run.queue_reroll(scene_id, kind)
+            run.queue_reroll(scene_id, kind, prompt)
             return {"queued": True}
         if active_run(registry):
             raise HTTPException(409, "a video is already being generated")
-        nxt = run.follow_up(*(([scene_id], []) if kind == "image" else ([], [scene_id])))
+        prompts = {scene_id: prompt} if prompt else None
+        nxt = run.follow_up(*(([scene_id], []) if kind == "image" else ([], [scene_id])), prompts)
         return {"run_id": nxt.id}
 
     @app.post("/api/runs/{run_id}/cancel")

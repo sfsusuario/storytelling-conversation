@@ -80,6 +80,17 @@ def scene_variants(path: Path, reroll: list[str]) -> dict[str, int]:
     return variants
 
 
+def scene_prompts(path: Path, new: dict[str, str]) -> dict[str, str]:
+    """Per-scene image prompts the user wrote, kept in the output folder so
+    later runs keep them (like the variants)."""
+    prompts = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    if new:
+        prompts.update(new)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(prompts, ensure_ascii=False), encoding="utf-8")
+    return prompts
+
+
 def _estimate_duration(text: str) -> float:
     return max(1.0, len(text.split()) / 2.5)
 
@@ -104,7 +115,11 @@ def _apply_force(output_dir: Path, options: PipelineOptions, log: Progress) -> N
 def run_pipeline(options: PipelineOptions,
                  on_progress: Progress = print,
                  on_event: EventSink | None = None,
-                 cancel: threading.Event | None = None) -> PipelineResult:
+                 cancel: threading.Event | None = None,
+                 rerolls=None) -> PipelineResult:
+    """rerolls: the live queue of the run (studio.runs.Run: pending(kind),
+    take(kind) -> {scene_id: prompt}). Asked during images or motion, a
+    reroll is done right after the scene in progress, then the run goes on."""
     log = on_progress
 
     def emit(event_type: str, **data) -> None:
@@ -125,8 +140,9 @@ def run_pipeline(options: PipelineOptions,
         def handler(scene, cached: bool = False) -> None:
             path = {"image": scene.image_path, "audio": scene.audio_path,
                     "clip": scene.clip_path, "motion": scene.motion_path}[kind]
+            extra = {"prompt": scene.visual_style_prompt} if kind == "image" else {}
             emit("scene", scene_id=scene.scene_id, kind=kind, cached=cached,
-                 path=str(path) if path else None)
+                 path=str(path) if path else None, **extra)
             check()
         return handler
 
@@ -246,15 +262,46 @@ def run_pipeline(options: PipelineOptions,
         options.image_provider = resolve_image_provider(options.image_provider)
         stage("images", options.image_model if options.image_provider == "gemini"
               else options.image_provider)
+    images_dir = output_dir / "02_images"
+    # shared with generate_scene_images and updated in place by live rerolls
+    variants = scene_variants(images_dir / "variants.json", options.reroll_images)
+    prompts = scene_prompts(images_dir / "prompts.json", options.image_prompts)
+
+    def take_images() -> list[str]:
+        """Image rerolls asked since the last look: new seed (and prompt)."""
+        if rerolls is None or options.test_mode or not rerolls.pending("image"):
+            return []
+        asked = rerolls.take("image")
+        variants.update(scene_variants(images_dir / "variants.json", list(asked)))
+        prompts.update(scene_prompts(images_dir / "prompts.json",
+                                     {k: v for k, v in asked.items() if v}))
+        return list(asked)
+
+    def make_images(redo=(), live: bool = True) -> None:
         generate_scene_images(scenes, base_image, options.image_model,
-                              output_dir / "02_images", ffmpeg=ffmpeg,
+                              images_dir, ffmpeg=ffmpeg,
                               provider=options.image_provider,
                               seed=options.seed, log=log,
                               on_image=scene_event("image"),
                               on_step=step_event("images"),
-                              variants=scene_variants(output_dir / "02_images" / "variants.json",
-                                                      options.reroll_images),
-                              keep=kept("images"))
+                              variants=variants, prompts=prompts,
+                              keep=kept("images"), redo=set(redo),
+                              more=take_images if live else None)
+
+    if not options.test_mode:
+        make_images(take_images())  # rerolls asked while the text was written
+        # Gemini (all at once) or a reroll right after the last image
+        while ids := take_images():
+            make_images(ids)
+
+    def redo_images() -> list[str]:
+        """Image rerolls asked after the images stage: redone now, before
+        their motion; the other images come from the cache."""
+        ids = take_images()
+        if ids:
+            log(f"  reroll: {', '.join(ids)}")
+            make_images(ids, live=False)
+        return ids
 
     # Stage 3: TTS + durations
     from .tts import resolve_voice, synthesize_scenes
@@ -277,12 +324,28 @@ def run_pipeline(options: PipelineOptions,
     # Stage 5: optional motion for each still (3D rotation / LivePortrait)
     from .motion import generate_motion
     stage("motion", options.motion if options.motion != "none" else "off")
-    generate_motion(options.motion, scenes, output_dir / "05_motion",
-                    options.fps, ffmpeg, seed=options.seed, log=log,
-                    on_scene=scene_event("motion"), on_step=step_event("motion"),
-                    variants=scene_variants(output_dir / "05_motion" / "variants.json",
-                                            options.reroll_motion),
-                    keep=kept("motion"))
+    motion_dir = output_dir / "05_motion"
+    motion_variants = scene_variants(motion_dir / "variants.json", options.reroll_motion)
+
+    def take_motion() -> list[str]:
+        """Scenes whose motion must be redone now: a new image, or a
+        motion reroll asked since the last look."""
+        ids = redo_images()
+        if rerolls is not None and rerolls.pending("motion"):
+            asked = list(rerolls.take("motion"))
+            motion_variants.update(scene_variants(motion_dir / "variants.json", asked))
+            ids += [i for i in asked if i not in ids]
+        return ids
+
+    def make_motion(redo=()) -> None:
+        generate_motion(options.motion, scenes, motion_dir, options.fps, ffmpeg,
+                        seed=options.seed, log=log, on_scene=scene_event("motion"),
+                        on_step=step_event("motion"), variants=motion_variants,
+                        keep=kept("motion"), redo=set(redo), more=take_motion)
+
+    make_motion(redo_images())  # image rerolls asked during the voice
+    while ids := take_motion():  # asked right after the last clip
+        make_motion(ids)
 
     # Stage 6: render (with ambient background bed per style set)
     from .renderer import render_all

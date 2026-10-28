@@ -748,6 +748,8 @@ class PipelineOptions:
     # Scene ids whose image / motion clip should be redone as a new variation.
     reroll_images: list[str] = field(default_factory=list)
     reroll_motion: list[str] = field(default_factory=list)
+    # Prompts the user wrote for a scene's image reroll, by scene id.
+    image_prompts: dict[str, str] = field(default_factory=dict)
 
 
 # ---------------------------------------------------------------------------

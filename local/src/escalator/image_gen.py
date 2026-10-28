@@ -130,15 +130,27 @@ def _stamp(provider: str, model: str, prompt: str, seed: int | None) -> str:
     return f"{provider}|{model}|{seed if provider != 'gemini' else ''}|{prompt}"
 
 
+def _model_prompt(persona, provider: str) -> str:
+    """The prompt the image model really gets (SDXL takes a short one)."""
+    if provider == "sdxl-face":
+        return f"portrait photo, {persona.image_detail}"
+    return build_image_prompt(persona, provider)
+
+
 def generate_scene_images(scenes: list[Scene], base_image: Path, model: str,
                           images_dir: Path, ffmpeg: str | None = None,
                           provider: str = "gemini", seed: int | None = None,
                           log=print, on_image=None, on_step=None,
                           variants: dict[str, int] | None = None,
-                          keep: bool = False) -> None:
+                          keep: bool = False, prompts: dict[str, str] | None = None,
+                          more=None, redo: set[str] | None = None) -> None:
     """One identity-preserving styled image per scene, from the ORIGINAL base image.
 
     keep: reuse existing images even if their stamp is outdated.
+    prompts: the user's own prompt for some scenes, instead of the persona's.
+    redo: scenes rerolled since the last call, made again whatever the cache.
+    more: called after each local image; returns scene ids rerolled meanwhile
+    (variants/prompts already updated in place), done next, before the rest.
 
     Gemini stages run in parallel; local stages run serially on the iGPU. The
     base image is downscaled once. Each image carries a .meta stamp so a new
@@ -146,10 +158,13 @@ def generate_scene_images(scenes: list[Scene], base_image: Path, model: str,
     """
     images_dir.mkdir(parents=True, exist_ok=True)
 
-    variants = variants or {}
+    variants = variants if variants is not None else {}
+    prompts = prompts if prompts is not None else {}
     stamps = {}
-    pending = []
-    for scene in scenes:
+
+    def plan(scene, rerolled=False):
+        """(scene, out) when the image must be made, else None (reported)."""
+        rerolled = rerolled or scene.scene_id in (redo or ())  # the cache never answers a reroll
         out = images_dir / f"{scene.scene_id}.png"
         if scene.persona.level <= 1:
             # Level 1 is always the untouched original photo: the video opens
@@ -161,14 +176,16 @@ def generate_scene_images(scenes: list[Scene], base_image: Path, model: str,
             log(f"  image: {out.name} (original, level 1)")
             if on_image:
                 on_image(scene, True)
-            continue
-        scene.visual_style_prompt = build_image_prompt(scene.persona, provider)
+            return None
+        custom = prompts.get(scene.scene_id)
+        scene.visual_style_prompt = custom or _model_prompt(scene.persona, provider)
         meta = out.with_suffix(".meta")
-        stamp = _stamp(provider, model, scene.visual_style_prompt, seed)
+        # the persona prompt keeps old stamps valid; a custom one replaces it
+        stamp = _stamp(provider, model, custom or build_image_prompt(scene.persona, provider), seed)
         if variants.get(scene.scene_id):  # a reroll: new seed, new stamp
             stamp += f"|v{variants[scene.scene_id]}"
         stamps[scene.scene_id] = stamp
-        if out.exists() and out.stat().st_size > 0:
+        if not rerolled and out.exists() and out.stat().st_size > 0:
             if not meta.exists():
                 # Images from before stamps existed: adopt, don't pay again.
                 meta.write_text(stamp, encoding="utf-8")
@@ -177,16 +194,27 @@ def generate_scene_images(scenes: list[Scene], base_image: Path, model: str,
                 scene.image_path = out
                 if on_image:
                     on_image(scene, True)
-                continue
-        pending.append((scene, out))
+                return None
+        return scene, out
+
+    pending = [job for job in map(plan, scenes) if job]
     if not pending:
         return
+    by_id = {scene.scene_id: scene for scene in scenes}
 
     def done(scene):
         out = scene.image_path
         out.with_suffix(".meta").write_text(stamps[scene.scene_id], encoding="utf-8")
         if on_image:
             on_image(scene, False)
+        # rerolls asked meanwhile jump the queue (the local loop pops from it;
+        # Gemini runs all at once, so the caller redoes them after)
+        for scene_id in (more() if more and provider != "gemini" else []):
+            if scene_id in by_id:
+                pending[:] = [j for j in pending if j[0].scene_id != scene_id]
+                job = plan(by_id[scene_id], rerolled=True)
+                if job:
+                    pending.insert(0, job)
 
     if provider != "gemini":
         from .image_local import generate_local_images

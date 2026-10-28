@@ -44,9 +44,10 @@ file_url = make_file_url("/files", OUTPUT_ROOT)
 RUNS: dict[str, Run] = {}
 
 
-def _pipeline(options: PipelineOptions, **kwargs):
+def _pipeline(options: PipelineOptions, rerolls=None, **kwargs):
     from .pipeline import run_pipeline  # looked up late: tests monkeypatch it
-    return run_pipeline(options, **kwargs)
+    # rerolls named here: studio.runs hands live rerolls only to pipelines that take them
+    return run_pipeline(options, rerolls=rerolls, **kwargs)
 
 
 def new_run(options: PipelineOptions, upload_id: str) -> Run:
@@ -105,6 +106,10 @@ def build_options(upload_id: str, raw: dict) -> PipelineOptions:
     unknown = set(raw) - CLIENT_OPTIONS
     if unknown:
         raise ValueError(f"unknown options: {sorted(unknown)}")
+    prompts = raw.get("image_prompts", {})
+    if not isinstance(prompts, dict) or not all(
+            isinstance(v, str) and len(v) <= 2000 for v in prompts.values()):
+        raise ValueError("image_prompts must map scene ids to text")
     return PipelineOptions(base_image=image, **raw)
 
 

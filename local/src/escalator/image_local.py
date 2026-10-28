@@ -16,7 +16,6 @@ import traceback
 from pathlib import Path
 from typing import Callable
 
-from .config import build_image_prompt
 from .models import Scene
 
 FLUX_REPO = "black-forest-labs/FLUX.1-Kontext-dev"
@@ -155,7 +154,10 @@ def generate_local_images(provider: str, pending: list[tuple[Scene, Path]],
     base = _fit(Image.open(base_jpg).convert("RGB"))
     repaint_all = Image.new("L", base.size, 255)  # white mask = whole frame
     try:
-        for scene, out in pending:
+        # on_image may put rerolled scenes at the front: pop, don't iterate
+        while pending:
+            scene, out = pending.pop(0)
+
             def step_cb(p, i, t, kw, scene=scene):
                 if on_step:  # p.num_timesteps: steps actually run (img2img runs fewer)
                     on_step(scene, i + 1, p.num_timesteps, "pasos")
@@ -165,11 +167,11 @@ def generate_local_images(provider: str, pending: list[tuple[Scene, Path]],
             if provider == "flux-kontext":
                 image = pipe(image=base, mask_image=repaint_all,
                              strength=FLUX_STRENGTH,
-                             prompt=build_image_prompt(scene.persona, provider),
+                             prompt=scene.visual_style_prompt,
                              guidance_scale=2.5, num_inference_steps=24,
                              generator=generator, callback_on_step_end=step_cb).images[0]
             else:
-                image = pipe(prompt=f"portrait photo, {scene.persona.image_detail}",
+                image = pipe(prompt=scene.visual_style_prompt,
                              negative_prompt=SDXL_NEGATIVE, image=base,
                              ip_adapter_image=base, strength=0.55,
                              num_inference_steps=30, guidance_scale=6.0,

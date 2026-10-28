@@ -105,7 +105,7 @@ function WorkBar({ work, now }: { work: Work; now: number }) {
 }
 
 type View = "image" | "video" | "original";
-type Reroll = (sceneId: string, kind: "image" | "motion") => void;
+type Reroll = (sceneId: string, kind: "image" | "motion", prompt?: string) => void;
 
 /** Discreet per-scene "another variation" buttons for a card footer. */
 export function RerollButtons({
@@ -122,7 +122,7 @@ export function RerollButtons({
   const btn = "rounded px-1.5 py-0.5 text-[11px] text-stone-500 hover:bg-stone-100 hover:text-orange-600 dark:hover:bg-stone-800";
   const item = (kind: "image" | "motion", label: string, title: string) =>
     queued.includes(`${scene.scene_id}:${kind}`) ? (
-      <span key={kind} className="px-1.5 py-0.5 text-[11px] text-amber-600" title="Se rehará al terminar la generación actual">
+      <span key={kind} className="px-1.5 py-0.5 text-[11px] text-amber-600" title="Se rehará en cuanto termine la escena en curso">
         ⏳ {label} en cola
       </span>
     ) : (
@@ -150,12 +150,15 @@ export function SceneViewer({
   scene: SceneState;
   original: string | null;
   onClose: () => void;
-  onReroll?: (sceneId: string, kind: "image" | "motion") => void;
+  onReroll?: Reroll;
   labels?: SceneLabels;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const video = scene.clip ?? scene.motion;
   const [view, setView] = useState<View>(video ? "video" : "image");
+  // Escalera hands out the prompt it used: editable for the next image
+  const [prompt, setPrompt] = useState(scene.prompt ?? "");
+  const edited = scene.prompt !== undefined && prompt.trim() !== "" && prompt.trim() !== scene.prompt.trim();
   useEffect(() => {
     ref.current?.showModal();
   }, []);
@@ -203,8 +206,12 @@ export function SceneViewer({
         {onReroll && (
           <div className="flex gap-2">
             {labels.canRerollImage(scene) && (
-              <button type="button" className="rounded-lg bg-white/15 px-3 py-1 text-sm hover:bg-white/25" onClick={() => onReroll(scene.scene_id, "image")}>
-                🎲 Otra imagen
+              <button
+                type="button"
+                className="rounded-lg bg-white/15 px-3 py-1 text-sm hover:bg-white/25"
+                onClick={() => onReroll(scene.scene_id, "image", edited ? prompt.trim() : undefined)}
+              >
+                {edited ? "🎨 Imagen con este prompt" : "🎲 Otra imagen"}
               </button>
             )}
             {scene.motion && (
@@ -215,7 +222,23 @@ export function SceneViewer({
           </div>
         )}
       </div>
-      {onReroll && <p className="mt-1 text-xs text-stone-400">Rehace solo esta escena con otra variación y vuelve a montar el vídeo.</p>}
+      {onReroll && labels.canRerollImage(scene) && scene.prompt !== undefined && (
+        <label className="mt-2 block text-xs text-stone-400">
+          Prompt de la imagen (edítalo para afinarla)
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            maxLength={2000}
+            rows={3}
+            className="mt-1 block w-full min-w-0 rounded-lg bg-white/10 p-2 text-sm text-white"
+          />
+        </label>
+      )}
+      {onReroll && (
+        <p className="mt-1 text-xs text-stone-400">
+          Rehace solo esta escena en cuanto termine la que está en curso; si ya tiene movimiento, también lo rehace. Luego sigue con lo demás.
+        </p>
+      )}
     </dialog>
   );
 }
@@ -284,7 +307,7 @@ export function ProgressView({
   state: RunState;
   averages: Record<string, number>;
   onCancel: () => void;
-  onReroll?: (sceneId: string, kind: "image" | "motion") => void;
+  onReroll?: Reroll;
   labels?: SceneLabels;
 }) {
   const now = useRunClock(state);

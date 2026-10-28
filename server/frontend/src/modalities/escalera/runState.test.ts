@@ -110,4 +110,15 @@ describe("queued rerolls", () => {
     expect(s.next).toBe("r2");
     expect(s.status).toBe("running");
   });
+
+  it("drops a reroll from the queue once the run takes it, and keeps the image prompt", () => {
+    const s = fold([
+      ...events,
+      { ts: 7, type: "queued", scene_id: "scene_02", kind: "image" },
+      { ts: 8, type: "rerolling", scene_id: "scene_02", kind: "image" },
+      { ts: 9, type: "scene", scene_id: "scene_02", kind: "image", cached: false, path_url: "/x.png", prompt: "a red dragon" },
+    ]);
+    expect(s.queued).toEqual([]);
+    expect(s.scenes.find((x) => x.scene_id === "scene_02")?.prompt).toBe("a red dragon");
+  });
 });

@@ -103,7 +103,7 @@ export default function App() {
   // and scene is cached, so only what failed (or was rerolled) is redone.
   const rerun = async (extra: Partial<Options> = {}) => {
     const last = store.get<{ uploadId: string; opts: Options } | null>("lastRequest", null);
-    const plain = { force: false, force_from: null, reroll_images: [], reroll_motion: [], ...extra };
+    const plain = { force: false, force_from: null, reroll_images: [], reroll_motion: [], image_prompts: {}, ...extra };
     if (!last) return start(plain);
     setStartError(null);
     try {
@@ -125,17 +125,23 @@ export default function App() {
       setStartError((e as Error).message);
     }
   };
-  // Asked during a run, the reroll is queued server-side and a follow-up run
-  // starts when this one ends; asked after, the follow-up starts now.
-  const reroll = async (sceneId: string, kind: "image" | "motion") => {
+  // Asked during a run, the reroll is redone right after the scene in
+  // progress (images, motion), else when the run ends; asked after, a
+  // follow-up run starts now. An image reroll may carry an edited prompt.
+  const reroll = async (sceneId: string, kind: "image" | "motion", prompt?: string) => {
     setStartError(null);
     try {
       if (!run.runId) throw new Error("unknown run");
-      const r = await api.reroll(run.runId, sceneId, kind);
+      const r = await api.reroll(run.runId, sceneId, kind, prompt);
       if (r.run_id) attach(r.run_id);
     } catch (e) {
       // The server restarted and forgot the run: start from the last request.
-      if ((e as Error).message.includes("unknown run")) return rerun(kind === "image" ? { reroll_images: [sceneId] } : { reroll_motion: [sceneId] });
+      if ((e as Error).message.includes("unknown run"))
+        return rerun(
+          kind === "image"
+            ? { reroll_images: [sceneId], image_prompts: prompt ? { [sceneId]: prompt } : {} }
+            : { reroll_motion: [sceneId] },
+        );
       setStartError((e as Error).message);
     }
   };

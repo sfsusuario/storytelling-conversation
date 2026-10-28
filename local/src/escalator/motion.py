@@ -367,10 +367,15 @@ def generate_motion(mode: str, scenes: list[Scene], motion_dir: Path, fps: int,
                     on_step: Callable | None = None,
                     variants: dict[str, int] | None = None,
                     keep: bool = False,
-                    skip_without_subject: bool = False) -> None:
+                    skip_without_subject: bool = False,
+                    more: Callable | None = None,
+                    redo: set[str] | None = None) -> None:
     """Fill scene.motion_path for every scene (cached per mode/image/duration).
 
     variants: per-scene reroll counter; a bump gives that scene a new seed.
+    redo: scenes made again whatever the cache (rerolled, or a new image).
+    more: called after each clip; returns scene ids to redo next, before the
+    rest (a rerolled motion, or a scene whose image was just redone).
     keep: reuse existing clips of this mode even if their stamp is outdated.
     skip_without_subject: a scene where rotate3d finds nothing to cut out
     (an empty landscape) stays a still instead of failing the run."""
@@ -383,8 +388,9 @@ def generate_motion(mode: str, scenes: list[Scene], motion_dir: Path, fps: int,
 
     motion_dir.mkdir(parents=True, exist_ok=True)
     encoder = video_encoder_args(ffmpeg)
-    pending = []
-    for scene in scenes:
+
+    def plan(scene, rerolled=False):
+        rerolled = rerolled or scene.scene_id in (redo or ())  # the cache never answers a reroll
         out = motion_dir / f"{scene.scene_id}.{mode}.mp4"
         meta = out.with_suffix(".meta")
         # LivePortrait clips are stretched to the scene by the renderer, so
@@ -394,13 +400,16 @@ def generate_motion(mode: str, scenes: list[Scene], motion_dir: Path, fps: int,
         variant = (variants or {}).get(scene.scene_id, 0)
         if variant:
             stamp += f"|v{variant}"
-        if out.exists() and meta.exists() and (keep or meta.read_text(encoding="utf-8") == stamp):
+        if not rerolled and out.exists() and meta.exists() and (
+                keep or meta.read_text(encoding="utf-8") == stamp):
             scene.motion_path = out
             log(f"  motion: {out.name} (cached)")
             if on_scene:
                 on_scene(scene, True)
-        else:
-            pending.append((scene, out, meta, stamp))
+            return None
+        return scene, out, meta, stamp
+
+    pending = [job for job in map(plan, scenes) if job]
     if not pending:
         return
 
@@ -414,7 +423,9 @@ def generate_motion(mode: str, scenes: list[Scene], motion_dir: Path, fps: int,
                               "pip install -e \".[image-local]\"") from e
         models = Scene3DModels()
 
-    for scene, out, meta, stamp in pending:
+    by_id = {scene.scene_id: scene for scene in scenes}
+    while pending:
+        scene, out, meta, stamp = pending.pop(0)
         variant = (variants or {}).get(scene.scene_id, 0)
         s = _seed(seed, f"{scene.scene_id}#{variant}" if variant else scene.scene_id)
         progress = (lambda step, total, label, scene=scene:
@@ -436,3 +447,8 @@ def generate_motion(mode: str, scenes: list[Scene], motion_dir: Path, fps: int,
         log(f"  motion: {out.name}")
         if on_scene:
             on_scene(scene, False)
+        # rerolls asked meanwhile jump the queue
+        for scene_id in (more() if more else []):
+            if scene_id in by_id:
+                pending[:] = [j for j in pending if j[0].scene_id != scene_id]
+                pending.insert(0, plan(by_id[scene_id], rerolled=True))

@@ -10,6 +10,8 @@ export interface SceneState {
   motion?: string | null;
   clip?: string | null;
   cached: Partial<Record<"image" | "audio" | "motion" | "clip", boolean>>;
+  /** Prompt the image model got (Escalera), editable for a reroll. */
+  prompt?: string;
   /** Live progress inside this scene's current slow step (diffusion steps, frames). */
   work?: Work | null;
 }
@@ -40,7 +42,7 @@ export interface RunState {
   /** Cuento: the written story (title, outline, real source if any). */
   story: { title: string; outline: string; protagonist: string; source: { url: string; author: string; subreddit: string } | null } | null;
   error: string | null;
-  /** Rerolls waiting for this run to finish, as "scene_id:kind". */
+  /** Rerolls waiting for their turn, as "scene_id:kind". */
   queued: string[];
   /** Follow-up run that redoes the queued rerolls. */
   next: string | null;
@@ -104,6 +106,7 @@ export function runReducer(state: RunState, event: RunEvent | { type: "reset" })
             work: null,
             [event.kind]: event.path_url,
             cached: { ...sc.cached, [event.kind]: event.cached },
+            ...(event.prompt !== undefined ? { prompt: event.prompt } : {}),
           };
         }),
       };
@@ -142,6 +145,8 @@ export function runReducer(state: RunState, event: RunEvent | { type: "reset" })
       const key = `${event.scene_id}:${event.kind}`;
       return s.queued.includes(key) ? s : { ...s, queued: [...s.queued, key] };
     }
+    case "rerolling":
+      return { ...s, queued: s.queued.filter((k) => k !== `${event.scene_id}:${event.kind}`) };
     case "next":
       return { ...s, next: event.run_id };
   }

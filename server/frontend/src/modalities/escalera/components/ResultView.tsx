@@ -22,7 +22,7 @@ export function ResultView({
 }: {
   state: RunState;
   onRegenerate: (stage: string) => void;
-  onReroll: (sceneId: string, kind: "image" | "motion") => void;
+  onReroll: (sceneId: string, kind: "image" | "motion", prompt?: string) => void;
   onNew: () => void;
   labels?: SceneLabels;
 }) {

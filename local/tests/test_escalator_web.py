@@ -16,7 +16,7 @@ def client(tmp_path, monkeypatch):
     return TestClient(web.create_app())
 
 
-def fake_pipeline(options, on_progress, on_event, cancel):
+def fake_pipeline(options, on_progress, on_event, cancel, rerolls=None):
     """Emits the same event shapes as run_pipeline, without any backend."""
     out = web.OUTPUT_ROOT / "run"
     out.mkdir(parents=True, exist_ok=True)
@@ -83,10 +83,11 @@ def test_delete_history_run(client):
 
 def test_reroll_during_run_is_queued_then_chained(client, monkeypatch):
     import threading
-    gate, seen = threading.Event(), []
+    gate, seen, prompts = threading.Event(), [], []
 
-    def slow_pipeline(options, on_progress, on_event, cancel):
+    def slow_pipeline(options, on_progress, on_event, cancel, rerolls=None):
         seen.append((options.reroll_images, options.reroll_motion))
+        prompts.append(options.image_prompts)
         if len(seen) == 1:
             gate.wait(5)  # the first run is "working" until the test releases it
         fake_pipeline(options, on_progress, on_event, cancel)
@@ -110,6 +111,12 @@ def test_reroll_during_run_is_queued_then_chained(client, monkeypatch):
     third = rr("scene_04", "image").json()["run_id"]
     sse_events(client.get(f"/api/runs/{third}/events").text)
     assert seen[2] == (["scene_04"], [])
+    # an image reroll can carry the user's own prompt; motion cannot
+    body = {"scene_id": "scene_02", "kind": "image", "prompt": "  un dragón rojo "}
+    fourth = client.post(f"/api/runs/{third}/reroll", json=body).json()["run_id"]
+    sse_events(client.get(f"/api/runs/{fourth}/events").text)
+    assert seen[3] == (["scene_02"], []) and prompts[3] == {"scene_02": "un dragón rojo"}
+    assert client.post(f"/api/runs/{fourth}/reroll", json={**body, "kind": "motion"}).status_code == 400
 
 
 def test_regenerate_history_run_in_its_own_folder(client, monkeypatch):
