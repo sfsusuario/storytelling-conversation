@@ -36,7 +36,7 @@ describe("Claude round trip", () => {
     expect(json.scenes.map((s: { scene_id: string }) => s.scene_id)).toEqual(["scene_01", "scene_02"]);
     expect(json.scenes[1].narration).toBe("Saltó."); // a scene without a draft keeps the model's text
   });
-  it("parses a fenced reply by scene_id and rejects a short one", () => {
+  it("parses a fenced reply by scene_id and reports what changed", () => {
     const body = JSON.stringify({
       title: "Tula nada",
       scenes: [
@@ -48,7 +48,26 @@ describe("Claude round trip", () => {
     expect(got.title).toBe("Tula nada");
     expect(got.scenes.scene_02).toEqual({ ...shot, narration: "Saltó alto.", character: "an old turtle" });
     expect(got.scenes.scene_01.action).toBe(shot.action); // missing fields keep the current value
-    expect(() => parseClaudeReply('{"scenes":[{"narration":"x"}]}', scenes)).toThrow(/2 escenas/);
+    expect([got.changed, got.same]).toEqual([[2], [1]]);
+    expect(got.warnings).toEqual([]);
+  });
+  it("validates the reply before touching the form", () => {
+    const ok = { scene_id: "scene_01", narration: "Otra." };
+    const two = (a: object, b: object) => JSON.stringify({ scenes: [a, b] });
+    // the text copied FOR Claude pasted back by mistake: its JSON is the current script
+    const state = { ...initialRun, scenes, story: { title: "T", outline: "", protagonist: "p", source: null } };
+    expect(() => parseClaudeReply(exportForClaude(state, {}, "T", "p"), scenes)).toThrow(/PARA Claude/);
     expect(() => parseClaudeReply("hola", scenes)).toThrow(/JSON/);
+    expect(() => parseClaudeReply('{"scenes": [', scenes)).toThrow(/JSON inválido/);
+    expect(() => parseClaudeReply('{"scenes":[{"narration":"x"}]}', scenes)).toThrow(/2 escenas/);
+    expect(() => parseClaudeReply(two(ok, { scene_id: "scene_9", narration: "x" }), scenes)).toThrow(/scene_id inválido/);
+    expect(() => parseClaudeReply(two(ok, ok), scenes)).toThrow(/dos veces/);
+    expect(() => parseClaudeReply(two(ok, { scene_id: "scene_02", narration: 3 }), scenes)).toThrow(/debe ser texto/);
+    expect(() => parseClaudeReply(two(ok, { scene_id: "scene_02", narration: " " }), scenes)).toThrow(/sin narración/);
+    const same = two({ scene_id: "scene_01", narration: "Tula miraba." }, { scene_id: "scene_02", narration: "Saltó." });
+    expect(() => parseClaudeReply(same, scenes)).toThrow(/idéntica/);
+    // broken generator rules are applied but flagged
+    const long = two({ scene_id: "scene_01", narration: "palabra ".repeat(40), action: "la tortuga mira" }, { scene_id: "scene_02", narration: "Saltó." });
+    expect(parseClaudeReply(long, scenes).warnings).toEqual(["escena 1: narración de más de 35 palabras"]);
   });
 });

@@ -41,31 +41,76 @@ export function exportForClaude(state: RunState, drafts: Record<string, SceneDra
   return `${CLAUDE_INSTRUCTIONS}\n${source}${outline}\nscript:\n${JSON.stringify(script, null, 2)}`;
 }
 
-type ClaudeReply = { title?: string; protagonist?: string; scenes: Record<string, SceneDraft> };
+type ClaudeReply = {
+  title?: string;
+  protagonist?: string;
+  scenes: Record<string, SceneDraft>;
+  /** Scene numbers whose narration the reply changed / left as it was. */
+  changed: number[];
+  same: number[];
+  /** Rules of the generator the reply breaks; applied anyway, shown to the user. */
+  warnings: string[];
+};
+const EXPORT_MARK = "Rules the generator depends on";
+const IMAGE_FIELDS: (keyof Shot)[] = ["character", "action", "setting", "key_object", "shot"];
 
-/** Claude's answer (JSON, with or without a code fence) matched to the scenes by scene_id or position. Throws a Spanish message on a bad reply. */
-export function parseClaudeReply(text: string, scenes: SceneState[]): ClaudeReply {
+/**
+ * Claude's answer (JSON, with or without a code fence), validated before it
+ * touches the form: same scene_id values, text fields, a narration per
+ * scene, and something actually changed. A field the reply leaves out keeps
+ * the current draft. Throws a Spanish message on a bad reply; broken length
+ * or language rules come back as warnings.
+ */
+export function parseClaudeReply(text: string, scenes: SceneState[], current: Record<string, SceneDraft> = {}, now: { title?: string; protagonist?: string } = {}): ClaudeReply {
   const raw = text.trim();
+  if (raw.includes(EXPORT_MARK))
+    throw new Error("Esto es el texto que se copia PARA Claude. Pégaselo a Claude y aquí pega lo que él responda.");
+  const start = raw.indexOf("{");
+  if (start < 0) throw new Error("La respuesta no trae un objeto JSON.");
   let data: unknown;
   try {
-    data = JSON.parse(raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1));
-  } catch {
-    throw new Error("No es un JSON válido: pega solo la respuesta de Claude.");
+    data = JSON.parse(raw.slice(start, raw.lastIndexOf("}") + 1));
+  } catch (e) {
+    throw new Error(`JSON inválido: ${(e as Error).message}`);
   }
-  const obj = data as { title?: unknown; protagonist?: unknown; scenes?: unknown };
-  const list = Array.isArray(obj.scenes) ? (obj.scenes as Record<string, unknown>[]) : null;
-  if (!list || list.length !== scenes.length) throw new Error(`El JSON debe traer ${scenes.length} escenas en "scenes".`);
+  if (!data || typeof data !== "object" || Array.isArray(data)) throw new Error("El JSON debe ser un objeto con title, protagonist y scenes.");
+  const obj = data as Record<string, unknown>;
+  for (const k of ["title", "protagonist"])
+    if (k in obj && typeof obj[k] !== "string") throw new Error(`"${k}" debe ser texto.`);
+  const list = obj.scenes;
+  if (!Array.isArray(list) || list.length !== scenes.length) throw new Error(`"scenes" debe ser una lista de ${scenes.length} escenas.`);
+  const ids = scenes.map((sc) => sc.scene_id);
+  const got = new Map<string, Record<string, unknown>>();
+  list.forEach((x, i) => {
+    if (!x || typeof x !== "object" || Array.isArray(x)) throw new Error(`La escena ${i + 1} no es un objeto.`);
+    const id = (x as Record<string, unknown>).scene_id;
+    if (typeof id !== "string" || !ids.includes(id)) throw new Error(`La escena ${i + 1} trae un scene_id inválido (${JSON.stringify(id)}); se esperan ${ids.join(", ")}.`);
+    if (got.has(id)) throw new Error(`${id} aparece dos veces.`);
+    got.set(id, x as Record<string, unknown>);
+  });
+
   const str = (v: unknown) => (typeof v === "string" ? v.trim() : "");
-  const out: ClaudeReply = { scenes: {} };
+  const out: ClaudeReply = { scenes: {}, changed: [], same: [], warnings: [] };
   if (str(obj.title)) out.title = str(obj.title);
   if (str(obj.protagonist)) out.protagonist = str(obj.protagonist);
+  let anyChange = (out.title ?? now.title) !== now.title || (out.protagonist ?? now.protagonist) !== now.protagonist;
   scenes.forEach((sc, i) => {
-    const got = list.find((x) => x.scene_id === sc.scene_id) ?? list[i];
-    const before = draftOf(sc);
-    const keys = Object.keys(before) as (keyof SceneDraft)[];
-    out.scenes[sc.scene_id] = { ...before, ...Object.fromEntries(keys.filter((k) => k in got).map((k) => [k, str(got[k])])) };
-    if (!out.scenes[sc.scene_id].narration) throw new Error(`La escena ${i + 1} viene sin narración.`);
+    const reply = got.get(sc.scene_id)!;
+    const before = current[sc.scene_id] ?? draftOf(sc);
+    const merged = { ...before };
+    for (const k of Object.keys(before) as (keyof SceneDraft)[]) {
+      if (!(k in reply)) continue;
+      if (typeof reply[k] !== "string") throw new Error(`Escena ${i + 1}: "${k}" debe ser texto.`);
+      merged[k] = str(reply[k]);
+    }
+    if (!merged.narration) throw new Error(`La escena ${i + 1} viene sin narración.`);
+    if (merged.narration.split(/\s+/).length > 35) out.warnings.push(`escena ${i + 1}: narración de más de 35 palabras`);
+    if (IMAGE_FIELDS.some((k) => /[áéíóúñ¿¡]/i.test(merged[k]))) out.warnings.push(`escena ${i + 1}: campos de imagen que no parecen inglés`);
+    if ((Object.keys(merged) as (keyof SceneDraft)[]).some((k) => merged[k] !== before[k])) anyChange = true;
+    out.scenes[sc.scene_id] = merged;
+    (merged.narration === before.narration ? out.same : out.changed).push(i + 1);
   });
+  if (!anyChange) throw new Error("La respuesta es idéntica al guion actual: no hay nada que aplicar.");
   return out;
 }
 
@@ -97,13 +142,16 @@ export function StoryPreview({ state, onContinue, onAnother, onBack }: { state: 
   const setField = (id: string, key: keyof SceneDraft, value: string) => setDrafts((d) => ({ ...d, [id]: { ...d[id], [key]: value } }));
   const edits = diffEdits(state.scenes, drafts, [story?.title ?? "", title], [story?.protagonist ?? "", protagonist]);
   const dirty = Object.keys(edits).length > 0;
+  // what the last paste did, so a narration Claude left alone is not mistaken for a failed import
+  const [imported, setImported] = useState<{ changed: number[]; same: number[]; warnings: string[] } | null>(null);
   const applyPaste = () => {
     if (!paste) return;
     try {
-      const got = parseClaudeReply(paste.text, state.scenes);
+      const got = parseClaudeReply(paste.text, state.scenes, drafts, { title, protagonist });
       setDrafts(got.scenes);
       if (got.title) setTitle(got.title);
       if (got.protagonist) setProtagonist(got.protagonist);
+      setImported({ changed: got.changed, same: got.same, warnings: got.warnings });
       setPaste(null);
     } catch (e) {
       setPaste({ ...paste, error: (e as Error).message });
@@ -125,6 +173,13 @@ export function StoryPreview({ state, onContinue, onAnother, onBack }: { state: 
           </div>
         </div>
         <p className="hint">«Copiar» lleva al portapapeles las instrucciones, la URL de la historia y el guion en JSON para pedirle a Claude que lo mejore; luego pega aquí su respuesta.</p>
+        {imported && (
+          <p role="status" className="rounded-lg bg-orange-50 p-2 text-sm text-orange-900 dark:bg-orange-950/40 dark:text-orange-200">
+            Respuesta aplicada. Narraciones nuevas: {imported.changed.length ? imported.changed.join(", ") : "ninguna"}.
+            {imported.same.length > 0 && ` Iguales en la respuesta de Claude: ${imported.same.join(", ")}.`}
+            {imported.warnings.length > 0 && ` Revisa: ${imported.warnings.join("; ")}.`}
+          </p>
+        )}
         {story?.outline && <p className="text-sm text-stone-500">{story.outline}</p>}
         {story?.source && (
           <p className="text-xs text-stone-500">
