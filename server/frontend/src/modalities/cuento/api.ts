@@ -25,11 +25,11 @@ export const api = {
       body: JSON.stringify({ upload_id, options }),
     }).then((r) => json<{ run_id: string }>(r)),
   cancel: (runId: string) => fetch(`${BASE}/api/runs/${runId}/cancel`, { method: "POST" }),
-  reroll: (runId: string, scene_id: string, kind: "image" | "motion") =>
+  reroll: (runId: string, scene_id: string, kind: "image" | "motion", prompt?: string) =>
     fetch(`${BASE}/api/runs/${runId}/reroll`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scene_id, kind }),
+      body: JSON.stringify({ scene_id, kind, prompt }),
     }).then((r) => json<{ queued?: boolean; run_id?: string }>(r)),
   retry: (runId: string) => fetch(`${BASE}/api/runs/${runId}/retry`, { method: "POST" }).then((r) => json<{ run_id: string }>(r)),
   voicePreviewUrl: (p: { provider: string; voice: string; language: string; rate: string; pitch: string }) =>

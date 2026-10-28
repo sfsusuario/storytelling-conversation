@@ -108,7 +108,7 @@ export default function App() {
   // and scene is cached, so only what failed (or was rerolled) is redone.
   const rerun = async (extra: Partial<StoryOptions> = {}) => {
     const last = store.get<{ uploadId: string; opts: StoryOptions } | null>("lastRequest", null);
-    const plain = { force: false, force_from: null, reroll_images: [], reroll_motion: [], ...extra };
+    const plain = { force: false, force_from: null, reroll_images: [], reroll_motion: [], image_prompts: {}, ...extra };
     if (!last) return start(plain);
     setStartError(null);
     try {
@@ -128,14 +128,19 @@ export default function App() {
       setStartError((e as Error).message);
     }
   };
-  const reroll = async (sceneId: string, kind: "image" | "motion") => {
+  const reroll = async (sceneId: string, kind: "image" | "motion", prompt?: string) => {
     setStartError(null);
     try {
       if (!run.runId) throw new Error("unknown run");
-      const r = await api.reroll(run.runId, sceneId, kind);
+      const r = await api.reroll(run.runId, sceneId, kind, prompt);
       if (r.run_id) attach(r.run_id);
     } catch (e) {
-      if ((e as Error).message.includes("unknown run")) return rerun(kind === "image" ? { reroll_images: [sceneId] } : { reroll_motion: [sceneId] });
+      if ((e as Error).message.includes("unknown run"))
+        return rerun(
+          kind === "image"
+            ? { reroll_images: [sceneId], image_prompts: prompt ? { [sceneId]: prompt } : {} }
+            : { reroll_motion: [sceneId] },
+        );
       setStartError((e as Error).message);
     }
   };
@@ -180,7 +185,7 @@ export default function App() {
     badge: (sc) => String(sc.level),
     title: (sc) => sc.persona,
     canRerollImage: (sc) => Boolean(sc.image),
-    editPrompt: false, // the story's prompts come from the storyboard
+    editPrompt: true,
     original: () => upload?.url ?? null,
     setLabel: (s) => s,
     gridProgress: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4",

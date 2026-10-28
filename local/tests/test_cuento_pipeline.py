@@ -169,6 +169,21 @@ def test_generate_story_images_with_a_fake_sdxl(tmp_path, monkeypatch):
     images.generate_story_images(scenes, prompts, tmp_path, 7, style="real", log=lambda *_: None,
                                  variants={"scene_01": 1})
     assert len(calls) == 2  # a reroll regenerates
+    # a reroll with the user's prompt, asked during scene_01, goes before scene_02
+    scenes.append(Scene(index=2, scene_id="scene_02", persona=Persona(3, "x", "", "", "story")))
+    prompts["scene_02"] = "medium shot, a heron"
+    asks = [["scene_01"]]
+
+    def more():
+        if asks:
+            prompts["scene_01"] = "close-up, a red dragon"
+            return asks.pop()
+        return []
+
+    images.generate_story_images(scenes, prompts, tmp_path, 7, style="real", log=lambda *_: None,
+                                 variants={"scene_01": 1}, redo={"scene_01"}, more=more)
+    assert [c["prompt"] for c in calls[2:]] == [
+        "wide shot, turtle looks up, soft watercolor", "close-up, a red dragon", "medium shot, a heron"]
 
 
 @pytest.mark.skipif(find_ffmpeg() is None, reason="ffmpeg missing")

@@ -81,15 +81,20 @@ def generate_story_images(scenes: list[Scene], prompts: dict[str, str],
                           log: Callable = print, on_image: Callable | None = None,
                           on_step: Callable | None = None,
                           variants: dict[str, int] | None = None,
-                          keep: bool = False) -> None:
+                          keep: bool = False, more: Callable | None = None,
+                          redo: set[str] | None = None) -> None:
     """One SDXL image per scene from prompts[scene_id].
     Each image carries a .meta stamp so a new prompt or seed regenerates it;
-    a reroll bumps the scene's variant (new seed)."""
+    a reroll bumps the scene's variant (new seed).
+    redo: scenes made again whatever the cache (rerolled).
+    more: called after each image; returns scene ids rerolled meanwhile
+    (variants/prompts already updated in place), done next, before the rest."""
     negative = negative_for(style)
     images_dir.mkdir(parents=True, exist_ok=True)
-    variants = variants or {}
-    pending = []
-    for scene in scenes:
+    variants = variants if variants is not None else {}
+
+    def plan(scene, rerolled=False):
+        rerolled = rerolled or scene.scene_id in (redo or ())  # the cache never answers a reroll
         out = images_dir / f"{scene.scene_id}.png"
         prompt = prompts[scene.scene_id]
         scene.visual_style_prompt = prompt
@@ -97,16 +102,19 @@ def generate_story_images(scenes: list[Scene], prompts: dict[str, str],
         if variants.get(scene.scene_id):
             stamp += f"|v{variants[scene.scene_id]}"
         meta = out.with_suffix(".meta")
-        if out.exists() and out.stat().st_size > 0 and meta.exists() and (
+        if not rerolled and out.exists() and out.stat().st_size > 0 and meta.exists() and (
                 keep or meta.read_text(encoding="utf-8") == stamp):
             log(f"  image: {out.name} (cached)")
             scene.image_path = out
             if on_image:
                 on_image(scene, True)
-            continue
-        pending.append((scene, out, meta, stamp, prompt))
+            return None
+        return scene, out, meta, stamp, prompt
+
+    pending = [job for job in map(plan, scenes) if job]
     if not pending:
         return
+    by_id = {scene.scene_id: scene for scene in scenes}
 
     try:
         import torch
@@ -130,7 +138,9 @@ def generate_story_images(scenes: list[Scene], prompts: dict[str, str],
             raise ImageGenError(DRIVER_HINT.format(error=e)) from e
         raise
     try:
-        for scene, out, meta, stamp, prompt in pending:
+        while pending:
+            scene, out, meta, stamp, prompt = pending.pop(0)
+
             def step_cb(p, i, t, kw, scene=scene):
                 if on_step:
                     on_step(scene, i + 1, p.num_timesteps, "pasos")
@@ -148,6 +158,11 @@ def generate_story_images(scenes: list[Scene], prompts: dict[str, str],
             log(f"  image: {out.name}")
             if on_image:
                 on_image(scene, False)
+            # rerolls asked meanwhile jump the queue
+            for scene_id in (more() if more else []):
+                if scene_id in by_id:
+                    pending[:] = [j for j in pending if j[0].scene_id != scene_id]
+                    pending.insert(0, plan(by_id[scene_id], rerolled=True))
     except BaseException as exc:
         # the traceback's diffusers frames hold the pipeline: clear them so it is
         # freed here, not after a retry has already loaded a second copy (XPU OOM)

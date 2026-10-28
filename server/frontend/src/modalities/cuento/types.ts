@@ -33,6 +33,8 @@ export interface StoryOptions {
   motion: string;
   reroll_images: string[];
   reroll_motion: string[];
+  /** The user's own prompt for a scene's image reroll, by scene id. */
+  image_prompts?: Record<string, string>;
 }
 
 export interface Preset {

@@ -21,7 +21,7 @@ from escalator.image_gen import generate_scene_images
 from escalator.models import Persona, Scene
 from escalator.motion import generate_motion
 from escalator.pipeline import (STAGES, PipelineCancelled, _apply_force,  # noqa: F401
-                                _slugify, scene_variants)
+                                _slugify, scene_prompts, scene_variants)
 from escalator.renderer import render_all
 from escalator.text_gen import resolve_text_backend
 from escalator.timeline import build_timeline
@@ -55,8 +55,12 @@ def default_output_dir(options: StoryOptions) -> Path:
 
 def run_story(options: StoryOptions, on_progress: Progress = print,
               on_event: EventSink | None = None,
-              cancel: threading.Event | None = None) -> Path | None:
-    """The final video, or None for a preview (stops after the text)."""
+              cancel: threading.Event | None = None, rerolls=None) -> Path | None:
+    """The final video, or None for a preview (stops after the text).
+
+    rerolls: the live queue of the run (studio.runs.Run). Asked during images
+    or motion, a reroll is done right after the scene in progress; an image
+    reroll asked during motion redoes the image, then its motion."""
     log = on_progress
     validate(options)
     if options.base_image and not Path(options.base_image).is_file():
@@ -83,8 +87,9 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
         def handler(scene, cached: bool = False) -> None:
             path = {"image": scene.image_path, "audio": scene.audio_path,
                     "clip": scene.clip_path, "motion": scene.motion_path}[kind]
+            extra = {"prompt": scene.visual_style_prompt} if kind == "image" else {}
             emit("scene", scene_id=scene.scene_id, kind=kind, cached=cached,
-                 path=str(path) if path else None)
+                 path=str(path) if path else None, **extra)
             check()
         return handler
 
@@ -169,7 +174,38 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
 
     # 2. images
     images_dir = output_dir / "02_images"
+    # shared with the image engines and updated in place by live rerolls
     variants = scene_variants(images_dir / "variants.json", options.reroll_images)
+    user_prompts = scene_prompts(images_dir / "prompts.json", options.image_prompts)
+    prompts.update(user_prompts)  # the user's own prompt wins over the storyboard
+
+    def take_images() -> list[str]:
+        """Image rerolls asked since the last look: new seed (and prompt)."""
+        if rerolls is None or options.test_mode or not rerolls.pending("image"):
+            return []
+        asked = rerolls.take("image")
+        variants.update(scene_variants(images_dir / "variants.json", list(asked)))
+        new = {k: v for k, v in asked.items() if v}
+        user_prompts.update(scene_prompts(images_dir / "prompts.json", new))
+        prompts.update(new)
+        return list(asked)
+
+    def make_images(redo=(), live: bool = True) -> None:
+        more = take_images if live else None
+        if base_image is not None:
+            generate_scene_images(scenes, base_image, options.image_model, images_dir,
+                                  ffmpeg=ffmpeg, provider=options.image_provider,
+                                  seed=options.seed, log=log,
+                                  on_image=scene_event("image"),
+                                  on_step=step_event("images"), variants=variants,
+                                  keep=kept("images"), prompts=user_prompts,
+                                  redo=set(redo), more=more)
+        else:
+            generate_story_images(scenes, prompts, images_dir, options.seed, style=style,
+                                  log=log, on_image=scene_event("image"),
+                                  on_step=step_event("images"), variants=variants,
+                                  keep=kept("images"), redo=set(redo), more=more)
+
     if options.test_mode:
         stage("images", "test mode: placeholders")
         placeholder_images(scenes, images_dir, ffmpeg, base_image, log=log)
@@ -179,18 +215,18 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
         options.image_provider = resolve_story_image_provider(options.image_provider,
                                                               base_image is not None)
         stage("images", options.image_provider)
-        if base_image is not None:
-            generate_scene_images(scenes, base_image, options.image_model, images_dir,
-                                  ffmpeg=ffmpeg, provider=options.image_provider,
-                                  seed=options.seed, log=log,
-                                  on_image=scene_event("image"),
-                                  on_step=step_event("images"), variants=variants,
-                                  keep=kept("images"))
-        else:
-            generate_story_images(scenes, prompts, images_dir, options.seed, style=style,
-                                  log=log, on_image=scene_event("image"),
-                                  on_step=step_event("images"), variants=variants,
-                                  keep=kept("images"))
+        make_images(take_images())  # rerolls asked while the story was written
+        while ids := take_images():  # asked right after the last image
+            make_images(ids)
+
+    def redo_images() -> list[str]:
+        """Image rerolls asked after the images stage: redone now, before
+        their motion; the other images come from the cache."""
+        ids = take_images()
+        if ids:
+            log(f"  reroll: {', '.join(ids)}")
+            make_images(ids, live=False)
+        return ids
 
     # 3. narration
     options.voice = resolve_voice(options.tts_provider, options.voice)
@@ -220,12 +256,29 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
 
     # 5. motion: the same 3D parallax as Escalera; a scene with no figure stays still
     stage("motion", options.motion if options.motion != "none" else "off")
-    generate_motion(options.motion, story_scenes, output_dir / "05_motion", options.fps,
-                    ffmpeg, seed=options.seed, log=log, on_scene=scene_event("motion"),
-                    on_step=step_event("motion"),
-                    variants=scene_variants(output_dir / "05_motion" / "variants.json",
-                                            options.reroll_motion),
-                    keep=kept("motion"), skip_without_subject=True)
+    motion_dir = output_dir / "05_motion"
+    motion_variants = scene_variants(motion_dir / "variants.json", options.reroll_motion)
+
+    def take_motion() -> list[str]:
+        """Scenes whose motion must be redone now: a new image, or a
+        motion reroll asked since the last look."""
+        ids = redo_images()
+        if rerolls is not None and rerolls.pending("motion"):
+            asked = list(rerolls.take("motion"))
+            motion_variants.update(scene_variants(motion_dir / "variants.json", asked))
+            ids += [i for i in asked if i not in ids]
+        return ids
+
+    def make_motion(redo=()) -> None:
+        generate_motion(options.motion, story_scenes, motion_dir, options.fps,
+                        ffmpeg, seed=options.seed, log=log, on_scene=scene_event("motion"),
+                        on_step=step_event("motion"), variants=motion_variants,
+                        keep=kept("motion"), skip_without_subject=True,
+                        redo=set(redo), more=take_motion)
+
+    make_motion(redo_images())  # image rerolls asked during the voice
+    while ids := take_motion():  # asked right after the last clip
+        make_motion(ids)
 
     # 6. render
     stage("render")

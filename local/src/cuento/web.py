@@ -27,9 +27,10 @@ file_url = make_file_url("/media/cuento", OUTPUT_ROOT)
 RUNS: dict[str, Run] = {}
 
 
-def _pipeline(options: StoryOptions, **kwargs):
+def _pipeline(options: StoryOptions, rerolls=None, **kwargs):
     from .pipeline import run_story  # looked up late: tests monkeypatch it
-    return run_story(options, **kwargs)
+    # rerolls named here: studio.runs hands live rerolls only to pipelines that take them
+    return run_story(options, rerolls=rerolls, **kwargs)
 
 
 def new_run(options: StoryOptions, upload_id: str) -> Run:

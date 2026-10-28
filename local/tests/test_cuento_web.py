@@ -19,7 +19,7 @@ def client(tmp_path, monkeypatch):
     return TestClient(web.create_app())
 
 
-def fake_story(options, on_progress, on_event, cancel):
+def fake_story(options, on_progress, on_event, cancel, rerolls=None):
     """Emits the same event shapes as run_story, without any backend."""
     out = web.OUTPUT_ROOT / "run"
     out.mkdir(parents=True, exist_ok=True)
@@ -117,7 +117,7 @@ def test_second_run_is_rejected_while_busy(client, monkeypatch):
     import threading
     gate = threading.Event()
 
-    def slow(options, on_progress, on_event, cancel):
+    def slow(options, on_progress, on_event, cancel, rerolls=None):
         gate.wait(5)
         fake_story(options, on_progress, on_event, cancel)
 
@@ -134,7 +134,7 @@ def test_reroll_during_run_is_queued_then_chained(client, monkeypatch):
     import threading
     gate, seen = threading.Event(), []
 
-    def slow(options, on_progress, on_event, cancel):
+    def slow(options, on_progress, on_event, cancel, rerolls=None):
         seen.append((options.reroll_images, options.reroll_motion))
         if len(seen) == 1:
             gate.wait(5)
