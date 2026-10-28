@@ -119,14 +119,17 @@ export function RerollButtons({
   queued?: string[];
   labels?: SceneLabels;
 }) {
+  const [asking, setAsking] = useState(false);
   const btn = "rounded px-1.5 py-0.5 text-[11px] text-stone-500 hover:bg-stone-100 hover:text-orange-600 dark:hover:bg-stone-800";
+  const ask = (kind: "image" | "motion") =>
+    kind === "image" && scene.prompt !== undefined ? setAsking(true) : onReroll(scene.scene_id, kind);
   const item = (kind: "image" | "motion", label: string, title: string) =>
     queued.includes(`${scene.scene_id}:${kind}`) ? (
       <span key={kind} className="px-1.5 py-0.5 text-[11px] text-amber-600" title="Se rehará en cuanto termine la escena en curso">
         ⏳ {label} en cola
       </span>
     ) : (
-      <button key={kind} type="button" className={btn} title={title} onClick={() => onReroll(scene.scene_id, kind)}>
+      <button key={kind} type="button" className={btn} title={title} onClick={() => ask(kind)}>
         🎲 {label}
       </button>
     );
@@ -134,7 +137,73 @@ export function RerollButtons({
     <div className="flex flex-wrap justify-center gap-1">
       {labels.canRerollImage(scene) && scene.image && item("image", "imagen", "Otra imagen para esta escena")}
       {scene.motion && item("motion", "movimiento", "Otro movimiento para esta escena")}
+      {asking && <RerollDialog scene={scene} onReroll={onReroll} onClose={() => setAsking(false)} labels={labels} />}
     </div>
+  );
+}
+
+/** "Another image" for one scene: shows the prompt the model got, editable. */
+export function RerollDialog({
+  scene,
+  onReroll,
+  onClose,
+  labels = ESCALERA_LABELS,
+}: {
+  scene: SceneState;
+  onReroll: Reroll;
+  onClose: () => void;
+  labels?: SceneLabels;
+}) {
+  const ref = useRef<HTMLDialogElement>(null);
+  const [prompt, setPrompt] = useState(scene.prompt ?? "");
+  const edited = prompt.trim() !== "" && prompt.trim() !== (scene.prompt ?? "").trim();
+  useEffect(() => {
+    ref.current?.showModal();
+  }, []);
+  const submit = () => {
+    onReroll(scene.scene_id, "image", edited ? prompt.trim() : undefined);
+    ref.current?.close();
+  };
+  return (
+    <dialog
+      ref={ref}
+      onClose={onClose}
+      onClick={(e) => e.target === ref.current && ref.current?.close()}
+      aria-label={`Otra imagen para ${labels.title(scene)}`}
+      className="w-[min(36rem,calc(100vw-2rem))] rounded-xl bg-stone-950 p-4 text-left text-white backdrop:bg-black/80"
+    >
+      <h3 className="mb-3 font-semibold">🎲 Otra imagen · {labels.title(scene)}</h3>
+      <div className="flex gap-3">
+        {scene.image && <img src={apiUrl(scene.image)} alt="" className="h-32 w-20 shrink-0 rounded-lg object-cover" />}
+        <label className="block min-w-0 flex-1 text-xs text-stone-400">
+          Prompt de la imagen (edítalo para afinarla)
+          <textarea
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            maxLength={2000}
+            rows={6}
+            autoFocus
+            className="mt-1 block w-full min-w-0 rounded-lg bg-white/10 p-2 text-sm text-white"
+          />
+        </label>
+      </div>
+      <p className="mt-2 text-xs text-stone-400">
+        Se hace en cuanto termine la escena en curso; si ya tiene movimiento, también lo rehace. Sin cambios, sale otra variación del mismo prompt.
+      </p>
+      <div className="mt-3 flex justify-end gap-2">
+        <button type="button" className="rounded-lg px-3 py-1 text-sm text-stone-300 hover:text-white" onClick={() => ref.current?.close()}>
+          Cancelar
+        </button>
+        {edited && (
+          <button type="button" className="rounded-lg px-3 py-1 text-sm text-stone-300 hover:text-white" onClick={() => setPrompt(scene.prompt ?? "")}>
+            Restaurar
+          </button>
+        )}
+        <button type="button" className="rounded-lg bg-orange-600 px-3 py-1 text-sm font-semibold hover:bg-orange-500" onClick={submit}>
+          {edited ? "🎨 Regenerar con este prompt" : "🎲 Regenerar"}
+        </button>
+      </div>
+    </dialog>
   );
 }
 
@@ -156,9 +225,7 @@ export function SceneViewer({
   const ref = useRef<HTMLDialogElement>(null);
   const video = scene.clip ?? scene.motion;
   const [view, setView] = useState<View>(video ? "video" : "image");
-  // Escalera hands out the prompt it used: editable for the next image
-  const [prompt, setPrompt] = useState(scene.prompt ?? "");
-  const edited = scene.prompt !== undefined && prompt.trim() !== "" && prompt.trim() !== scene.prompt.trim();
+  const [asking, setAsking] = useState(false);
   useEffect(() => {
     ref.current?.showModal();
   }, []);
@@ -209,9 +276,9 @@ export function SceneViewer({
               <button
                 type="button"
                 className="rounded-lg bg-white/15 px-3 py-1 text-sm hover:bg-white/25"
-                onClick={() => onReroll(scene.scene_id, "image", edited ? prompt.trim() : undefined)}
+                onClick={() => (scene.prompt !== undefined ? setAsking(true) : onReroll(scene.scene_id, "image"))}
               >
-                {edited ? "🎨 Imagen con este prompt" : "🎲 Otra imagen"}
+                🎲 Otra imagen
               </button>
             )}
             {scene.motion && (
@@ -222,18 +289,7 @@ export function SceneViewer({
           </div>
         )}
       </div>
-      {onReroll && labels.canRerollImage(scene) && scene.prompt !== undefined && (
-        <label className="mt-2 block text-xs text-stone-400">
-          Prompt de la imagen (edítalo para afinarla)
-          <textarea
-            value={prompt}
-            onChange={(e) => setPrompt(e.target.value)}
-            maxLength={2000}
-            rows={3}
-            className="mt-1 block w-full min-w-0 rounded-lg bg-white/10 p-2 text-sm text-white"
-          />
-        </label>
-      )}
+      {onReroll && asking && <RerollDialog scene={scene} onReroll={onReroll} onClose={() => setAsking(false)} labels={labels} />}
       {onReroll && (
         <p className="mt-1 text-xs text-stone-400">
           Rehace solo esta escena en cuanto termine la que está en curso; si ya tiene movimiento, también lo rehace. Luego sigue con lo demás.
