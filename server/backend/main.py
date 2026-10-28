@@ -68,6 +68,39 @@ class Hub:
         self.pending.pop(p.item["id"], None)
 
 
+class Transfer:
+    """One copy of a media file from the worker into the cache, shared by every
+    request for it while it runs: the PC uploads it once, and each browser gets
+    the bytes as they arrive instead of after the whole file."""
+
+    def __init__(self, size: int):
+        self.size = size  # 0 = unknown
+        # shortcut: the bytes stay in memory during the copy (videos are ~10-20 MB); a file tail if they grow
+        self.chunks: list[bytes] = []
+        self.done = False
+        self.cond = asyncio.Condition()
+
+    async def add(self, chunk: bytes | None) -> None:
+        async with self.cond:
+            if chunk is None:
+                self.done = True
+            else:
+                self.chunks.append(chunk)
+            self.cond.notify_all()
+
+    async def follow(self):
+        i = 0
+        while True:
+            async with self.cond:
+                await self.cond.wait_for(lambda: i < len(self.chunks) or self.done)
+                batch, done = self.chunks[i:], self.done
+            for chunk in batch:
+                yield chunk
+            i += len(batch)
+            if done and i >= len(self.chunks):
+                return
+
+
 class Cache:
     """Last good reply per URL: <sha1>.bin + <sha1>.json (headers)."""
 
@@ -85,12 +118,16 @@ class Cache:
             return data, json.loads(meta.read_text(encoding="utf-8"))
         return None
 
-    async def store(self, key: str, chunks: asyncio.Queue, headers: dict) -> tuple[Path, dict]:
+    async def store(self, key: str, chunks: asyncio.Queue, headers: dict,
+                    on_chunk=None) -> tuple[Path, dict]:
+        """Raises TimeoutError if the worker goes quiet mid-file."""
         data, meta = self._paths(key)
         tmp = data.with_suffix(".part")
         with tmp.open("wb") as f:
-            while (chunk := await chunks.get()) is not None:
+            while (chunk := await asyncio.wait_for(chunks.get(), 60)) is not None:
                 f.write(chunk)
+                if on_chunk:
+                    await on_chunk(chunk)
         tmp.replace(data)  # atomic: a cut transfer never replaces a good copy
         meta.write_text(json.dumps(headers), encoding="utf-8")
         return data, headers
@@ -109,6 +146,7 @@ def create_app(password: str | None = None, worker_token: str | None = None,
         o.strip().rstrip("/") for o in os.environ.get("WEB_ORIGINS", "").split(",") if o.strip()]
     cache = Cache(cache_dir or Path(os.environ.get("CACHE_DIR", "cache")))
     hub = Hub(offline_after)
+    transfers: dict[str, Transfer] = {}
 
     app = FastAPI(title="Storytelling Studio (servidor)", docs_url=None, redoc_url=None)
     app.add_middleware(CORSMiddleware, allow_origins=origins, allow_credentials=True,
@@ -241,6 +279,9 @@ def create_app(password: str | None = None, worker_token: str | None = None,
                 return from_cache(entry, download, offline=True)
             raise HTTPException(503, OFFLINE)
 
+        if media and key in transfers:  # already coming from the PC: join it
+            return await media_reply(request, key, transfers[key], path, download)
+
         headers = {h: v for h in FORWARD_HEADERS if (v := request.headers.get(h))}
         if media and entry and entry[1].get("etag"):
             headers["if-none-match"] = entry[1]["etag"]  # unchanged video: worker answers 304
@@ -259,7 +300,15 @@ def create_app(password: str | None = None, worker_token: str | None = None,
         if status == 304 and entry:
             hub.drop(p)
             return from_cache(entry, download)
-        if status == 200 and (media or (get and ctype.startswith("application/json"))):
+        if status == 200 and media:
+            if key in transfers:  # another request started the same copy meanwhile
+                hub.drop(p)
+                return await media_reply(request, key, transfers[key], path, download)
+            size = str((head.get("headers") or {}).get("content-length", ""))
+            t = transfers[key] = Transfer(int(size) if size.isdigit() else 0)
+            asyncio.create_task(fill(key, p, t, {**reply, "name": Path(path).name}))
+            return await media_reply(request, key, t, path, download)
+        if status == 200 and get and ctype.startswith("application/json"):
             try:
                 stored = await cache.store(key, p.chunks, {**reply, "name": Path(path).name})
             finally:
@@ -267,6 +316,37 @@ def create_app(password: str | None = None, worker_token: str | None = None,
             return from_cache(stored, download)
         return StreamingResponse(stream(p, ctype.startswith("text/event-stream")),
                                  status_code=status, headers=reply)
+
+    async def fill(key: str, p: Pending, t: Transfer, headers: dict) -> None:
+        """Copies one file from the worker into the cache. Runs on its own, so a
+        browser that leaves (or a warm-up request) never cuts the copy short."""
+        try:
+            await cache.store(key, p.chunks, headers, on_chunk=t.add)
+        except asyncio.TimeoutError:
+            pass  # the PC went quiet: readers end short, the next request retries
+        finally:
+            hub.drop(p)
+            await t.add(None)
+            transfers.pop(key, None)
+
+    async def media_reply(request: Request, key: str, t: Transfer, path: str, download: bool):
+        # a ranged request (video players, Safari) needs the whole file to answer:
+        # it waits for the copy, then gets the cached file with Range support
+        if request.headers.get("range"):
+            async for _ in t.follow():
+                pass
+            entry = cache.get(key)
+            if entry is None:
+                raise HTTPException(502, "El PC cortó la transferencia; reintenta.")
+            return from_cache(entry, download)
+        headers = {"cache-control": "no-store"}
+        if t.size:
+            headers["content-length"] = str(t.size)  # lets the share button show a %
+        if download:
+            name = "".join(c for c in Path(path).name if c.isascii() and c not in '"\\') or "video.mp4"
+            headers["content-disposition"] = f'attachment; filename="{name}"'
+        ctype = "video/mp4" if path.endswith(".mp4") else "application/octet-stream"
+        return StreamingResponse(t.follow(), media_type=ctype, headers=headers)
 
     for prefix in RELAYED:
         app.add_api_route(f"/{prefix}/{{rest:path}}", relay,

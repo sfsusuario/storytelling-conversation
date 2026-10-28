@@ -153,7 +153,7 @@ export function History({ onStarted }: { onStarted: (runId: string) => void }) {
           onClick={() => setOpen(null)}
         >
           <div className="card grid max-h-full w-full max-w-4xl gap-5 overflow-auto md:grid-cols-[minmax(0,320px)_1fr]" onClick={(e) => e.stopPropagation()}>
-            {open.video_url && <video src={apiUrl(open.video_url)} controls autoPlay className="aspect-[9/16] w-full rounded-xl bg-black" />}
+            {open.video_url && <video src={apiUrl(open.video_url)} controls preload="metadata" className="aspect-[9/16] w-full rounded-xl bg-black" />}
             <div className="space-y-3">
               <div className="flex items-start justify-between gap-2">
                 <h3 className="text-lg font-semibold">“{open.phrase}”</h3>
@@ -181,7 +181,7 @@ export function History({ onStarted }: { onStarted: (runId: string) => void }) {
               )}
               <Regenerate run={open} onStarted={onStarted} />
               <div className="flex flex-wrap gap-2">
-                {open.video_url && <ShareButton className="btn-primary" url={open.video_url} title={open.name} text={open.social} />}
+                {open.video_url && <ShareButton warm className="btn-primary" url={open.video_url} title={open.name} text={open.social} />}
                 {open.video_url && (
                   <a className="btn-primary" href={downloadUrl(open.video_url)} download={`${open.name}.mp4`}>
                     ⬇ Descargar MP4

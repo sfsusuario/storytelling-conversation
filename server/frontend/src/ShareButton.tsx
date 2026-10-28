@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { remote } from "./remote";
 
 const probe = () => {
   try {
@@ -15,18 +16,32 @@ export const canShareVideo = (() => {
     && matchMedia("(pointer: coarse)").matches;
 })();
 
-type Props = { url: string; title?: string; text?: string; className?: string };
+type Props = {
+  url: string;
+  title?: string;
+  text?: string;
+  className?: string;
+  /** Ask the server to copy the video from the PC now, so a later tap only downloads it from the server. */
+  warm?: boolean;
+};
 
 /**
  * Shares the video file itself (not a link) through the phone's share sheet.
  * Renders nothing on desktop. The download can outlast the tap's permission
  * to open the sheet (Safari): then a second tap shares the file already here.
  */
-export default function ShareButton({ url, title, text, className }: Props) {
+export default function ShareButton({ url, title, text, className, warm }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
   // bytes fetched so far and the total (0 when the server sends no Content-Length)
   const [progress, setProgress] = useState({ got: 0, total: 0 });
+  // A one-byte ranged request: the server starts its copy and the phone downloads almost nothing.
+  useEffect(() => {
+    if (!warm || !remote || !canShareVideo || !url) return;
+    const ctrl = new AbortController();
+    fetch(url, { headers: { Range: "bytes=0-0" }, signal: ctrl.signal }).catch(() => {});
+    return () => ctrl.abort();
+  }, [warm, url]);
   if (!canShareVideo || !url) return null;
 
   const download = async (): Promise<Blob> => {

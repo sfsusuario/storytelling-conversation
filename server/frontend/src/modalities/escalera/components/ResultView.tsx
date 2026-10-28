@@ -33,7 +33,7 @@ export function ResultView({
     <section className="grid gap-6 lg:grid-cols-[minmax(0,380px)_1fr]" aria-labelledby="result-title">
       <div className="mx-auto w-full max-w-[380px]">
         {result.video && (
-          <video src={apiUrl(result.video)} controls autoPlay className="aspect-[9/16] w-full rounded-2xl bg-black shadow-lg" />
+          <video src={apiUrl(result.video)} controls preload="metadata" className="aspect-[9/16] w-full rounded-2xl bg-black shadow-lg" />
         )}
       </div>
       <div className="space-y-5">
@@ -46,7 +46,7 @@ export function ResultView({
             {state.styleSet && ` · ${labels.setLabel(state.styleSet)}`}
           </p>
           <div className="flex flex-wrap gap-2 pt-2">
-            {result.video && <ShareButton className="btn-primary" url={result.video} text={result.social} />}
+            {result.video && <ShareButton warm className="btn-primary" url={result.video} text={result.social} />}
             {result.video && (
               <a className="btn-primary" href={downloadUrl(result.video)} download={labels.download}>
                 ⬇ Descargar MP4

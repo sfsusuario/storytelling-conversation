@@ -357,7 +357,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
         <div className="card done">
           <div className="result">
             {videoResult.video_url && (
-              <video src={apiUrl(videoResult.video_url)} controls autoPlay className="player" />
+              <video src={apiUrl(videoResult.video_url)} controls preload="metadata" className="player" />
             )}
             <div className="meta">
               <h2 className="title">{videoResult.title}</h2>
@@ -365,7 +365,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
               <label>Descripción para redes</label>
               <pre className="social">{videoResult.social}</pre>
               <div className="row">
-                {videoResult.video_url && <ShareButton url={videoResult.video_url} title={videoResult.title} text={videoResult.social} />}
+                {videoResult.video_url && <ShareButton warm url={videoResult.video_url} title={videoResult.title} text={videoResult.social} />}
                 {videoResult.video_url && (
                   <a className="ghost button" href={downloadUrl(videoResult.video_url)} download={`${videoResult.title}.mp4`}>⬇ Descargar MP4</a>
                 )}

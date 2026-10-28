@@ -117,7 +117,7 @@ export default function History({
       {playing && (
         <div className="h-backdrop" onClick={() => setPlaying(null)}>
           <div className="h-player" onClick={(e) => e.stopPropagation()}>
-            {playing.video_url && <video src={apiUrl(playing.video_url)} controls autoPlay />}
+            {playing.video_url && <video src={apiUrl(playing.video_url)} controls preload="metadata" />}
             <div className="h-info">
               <span className="h-badge h-static">{playing.modality_icon} {playing.modality_name}</span>
               <h3>{playing.title}</h3>
@@ -128,7 +128,7 @@ export default function History({
               </ul>
               {playing.social && <pre>{playing.social}</pre>}
               <div className="h-actions">
-                {playing.video_url && <ShareButton url={playing.video_url} title={playing.title} text={playing.social} />}
+                {playing.video_url && <ShareButton warm url={playing.video_url} title={playing.title} text={playing.social} />}
                 {playing.video_url && <a className="h-button" href={downloadUrl(playing.video_url)} download={`${playing.title}.mp4`}>⬇ Descargar MP4</a>}
                 {playing.social && <button onClick={() => copy(playing)}>{copied === playing.name ? "✓ Copiado" : "📋 Copiar descripción"}</button>}
                 {playing.reuse && <button onClick={() => onReuse(playing.modality, playing.reuse!)}>♻ Otra versión</button>}

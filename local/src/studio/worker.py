@@ -26,7 +26,9 @@ import httpx
 DEFAULT_SERVER = "https://api.storyteller.fierro.dev"
 # only the studio's own routes; the server can never reach anything else here
 ALLOWED = ("/api/", "/m/", "/media/", "/files/")
-REPLY_HEADERS = ("content-type", "etag", "content-disposition", "cache-control", "last-modified")
+# content-length: the server passes it on for media only (a progress bar on the phone)
+REPLY_HEADERS = ("content-type", "etag", "content-disposition", "cache-control", "last-modified",
+                 "content-length")
 FLUSH_BYTES = 1 << 20
 
 

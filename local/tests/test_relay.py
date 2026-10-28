@@ -35,8 +35,23 @@ def _serve(app) -> tuple[str, uvicorn.Server]:
     return f"http://127.0.0.1:{port}", server
 
 
+SLOW = b"frame-" * 400_000  # ~2.4 MB: several worker chunks
+slow_calls: list[int] = []
+
+
 def _fake_studio(media: Path) -> FastAPI:
     app = FastAPI()
+
+    @app.get("/media/slow.mp4")
+    def slow():
+        slow_calls.append(1)
+
+        async def gen():
+            for i in range(0, len(SLOW), 600_000):
+                yield SLOW[i:i + 600_000]
+                await asyncio.sleep(0.2)
+        return StreamingResponse(gen(), media_type="video/mp4",
+                                 headers={"content-length": str(len(SLOW)), "etag": '"s1"'})
 
     @app.get("/api/history")
     def history():
@@ -92,6 +107,19 @@ def test_relay_end_to_end(tmp_path, monkeypatch):
     dl = web.get("/media/v.mp4?dl=1")
     assert "attachment" in dl.headers["content-disposition"]
     assert web.get("/media/../secret").status_code in (403, 404)
+
+    # two phones (or the player and the share button) at once: the PC uploads
+    # the file once, the plain request streams it with its size, the ranged one
+    # waits for the copy and gets a 206 from the cache
+    import concurrent.futures
+    with concurrent.futures.ThreadPoolExecutor(2) as pool:
+        plain = pool.submit(web.get, "/media/slow.mp4")
+        time.sleep(0.1)
+        ranged = pool.submit(web.get, "/media/slow.mp4", headers={"Range": "bytes=0-5"})
+        plain, ranged = plain.result(), ranged.result()
+    assert plain.content == SLOW and plain.headers["content-length"] == str(len(SLOW))
+    assert ranged.status_code == 206 and ranged.content == b"frame-"
+    assert slow_calls == [1]
 
     (media / "v.mp4").write_bytes(b"video-2")  # regenerated: the etag changes
     assert web.get("/media/v.mp4").content == b"video-2"
