@@ -97,10 +97,10 @@ export default function History({
               <span className="h-muted h-small">{fmtDate(run.created)}</span>
               <div className="h-actions">
                 {run.social && (
-                  <button onClick={() => copy(run)}>{copied === run.name ? "✓ Copiado" : "📋 Texto"}</button>
+                  <button onClick={() => copy(run)} title="Copiar descripción">{copied === run.name ? "✓ Copiado" : "📋 Descripción"}</button>
                 )}
-                {run.video_url && <a className="h-button" href={downloadUrl(run.video_url)} download title="Descargar">⬇</a>}
                 {run.video_url && <ShareButton url={run.video_url} title={run.title} text={run.social} />}
+                {run.video_url && <a className="h-button" href={downloadUrl(run.video_url)} download={`${run.title}.mp4`} title="Descargar MP4">⬇ MP4</a>}
                 {run.delete_url && <button onClick={() => remove(run)} title="Borrar">🗑</button>}
                 {run.reuse ? (
                   <button onClick={() => onReuse(run.modality, run.reuse!)} title="Otra versión con la misma entrada">
@@ -129,7 +129,8 @@ export default function History({
               {playing.social && <pre>{playing.social}</pre>}
               <div className="h-actions">
                 {playing.video_url && <ShareButton url={playing.video_url} title={playing.title} text={playing.social} />}
-                {playing.social && <button onClick={() => copy(playing)}>{copied === playing.name ? "✓ Copiado" : "📋 Copiar texto"}</button>}
+                {playing.video_url && <a className="h-button" href={downloadUrl(playing.video_url)} download={`${playing.title}.mp4`}>⬇ Descargar MP4</a>}
+                {playing.social && <button onClick={() => copy(playing)}>{copied === playing.name ? "✓ Copiado" : "📋 Copiar descripción"}</button>}
                 {playing.reuse && <button onClick={() => onReuse(playing.modality, playing.reuse!)}>♻ Otra versión</button>}
                 {playing.delete_url && <button onClick={() => remove(playing)}>🗑 Borrar</button>}
                 <button onClick={() => setPlaying(null)}>Cerrar</button>

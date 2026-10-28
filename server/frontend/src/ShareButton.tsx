@@ -25,17 +25,36 @@ type Props = { url: string; title?: string; text?: string; className?: string };
 export default function ShareButton({ url, title, text, className }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [state, setState] = useState<"idle" | "loading" | "ready" | "error">("idle");
+  // bytes fetched so far and the total (0 when the server sends no Content-Length)
+  const [progress, setProgress] = useState({ got: 0, total: 0 });
   if (!canShareVideo || !url) return null;
+
+  const download = async (): Promise<Blob> => {
+    const res = await fetch(url); // remote mode: remote.ts sends it to the server with the session
+    if (!res.ok) throw new Error(String(res.status));
+    const total = Number(res.headers.get("content-length")) || 0;
+    const reader = res.body?.getReader();
+    if (!reader) return res.blob();
+    const chunks: BlobPart[] = [];
+    let got = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      got += value.byteLength;
+      setProgress({ got, total });
+    }
+    return new Blob(chunks, { type: "video/mp4" });
+  };
 
   const share = async () => {
     try {
       let f = file;
       if (!f) {
         setState("loading");
-        const res = await fetch(url); // remote mode: remote.ts sends it to the server with the session
-        if (!res.ok) throw new Error(String(res.status));
+        setProgress({ got: 0, total: 0 });
         const name = `${(title || "video").replace(/[^\w\- ]+/g, "").trim().slice(0, 60) || "video"}.mp4`;
-        f = new File([await res.blob()], name, { type: "video/mp4" });
+        f = new File([await download()], name, { type: "video/mp4" });
         setFile(f);
       }
       await navigator.share({ files: [f], title, text });
@@ -48,7 +67,10 @@ export default function ShareButton({ url, title, text, className }: Props) {
     }
   };
 
-  const label = { idle: "📤 Compartir", loading: "⏳ Preparando…", ready: "📤 Tocar para compartir", error: "⚠ Reintentar" }[state];
+  const loading = progress.total
+    ? `⏳ Descargando ${Math.round((100 * progress.got) / progress.total)} %`
+    : `⏳ Descargando ${(progress.got / 1e6).toFixed(1)} MB`;
+  const label = { idle: "📤 Compartir", loading, ready: "📤 Tocar para compartir", error: "⚠ Reintentar" }[state];
   return (
     <button type="button" className={className} onClick={share} disabled={state === "loading"}>
       {label}

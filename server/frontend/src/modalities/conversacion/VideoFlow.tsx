@@ -366,10 +366,10 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
               <pre className="social">{videoResult.social}</pre>
               <div className="row">
                 {videoResult.video_url && <ShareButton url={videoResult.video_url} title={videoResult.title} text={videoResult.social} />}
-                <CopyButton text={videoResult.social} label="📋 Copiar descripción" />
                 {videoResult.video_url && (
-                  <a className="ghost button" href={downloadUrl(videoResult.video_url)} download>⬇ Descargar</a>
+                  <a className="ghost button" href={downloadUrl(videoResult.video_url)} download={`${videoResult.title}.mp4`}>⬇ Descargar MP4</a>
                 )}
+                <CopyButton text={videoResult.social} label="📋 Copiar descripción" />
               </div>
               <p className="muted small">Carpeta: {videoResult.folder}</p>
               <div className="row">

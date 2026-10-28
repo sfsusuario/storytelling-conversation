@@ -114,12 +114,13 @@ export function formatSeconds(s: number): string {
   return m > 0 ? `${m}m ${r.toString().padStart(2, "0")}s` : `${r}s`;
 }
 
-export function CopyButton({ text }: { text: string }) {
+/** Copies text to the clipboard; the same label in every modality unless given. */
+export function CopyButton({ text, label = "📋 Copiar descripción", className = "btn-ghost" }: { text: string; label?: string; className?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      className="btn-ghost"
+      className={className}
       onClick={() =>
         navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
@@ -127,7 +128,7 @@ export function CopyButton({ text }: { text: string }) {
         })
       }
     >
-      {copied ? "✓ Copiado" : "📋 Copiar"}
+      {copied ? "✓ Copiado" : label}
     </button>
   );
 }

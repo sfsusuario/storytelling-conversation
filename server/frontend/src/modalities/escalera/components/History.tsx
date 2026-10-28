@@ -184,7 +184,7 @@ export function History({ onStarted }: { onStarted: (runId: string) => void }) {
                 {open.video_url && <ShareButton className="btn-primary" url={open.video_url} title={open.name} text={open.social} />}
                 {open.video_url && (
                   <a className="btn-primary" href={downloadUrl(open.video_url)} download={`${open.name}.mp4`}>
-                    ⬇ Descargar
+                    ⬇ Descargar MP4
                   </a>
                 )}
                 <button type="button" className="btn-ghost text-red-600" onClick={() => remove(open)}>
