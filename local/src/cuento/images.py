@@ -59,7 +59,9 @@ def story_prompt(scene, protagonist: str, style: str) -> str:
     # no "the protagonist" in the action: the scene is about something seen
     # (a creature, a photo, a door), drawn without the character
     action = _WATCHER.sub("", scene.action.strip())
-    subject = re.sub(r"\b(the|el|la) protagonista?\b", protagonist, action, count=1, flags=re.I)
+    # the user's look for this scene's main character wins over the story's
+    who = getattr(scene, "character", "") or protagonist
+    subject = re.sub(r"\b(the|el|la) protagonista?\b", who, action, count=1, flags=re.I)
     parts = [scene.shot, subject, scene.setting, scene.key_object, style]
     return ", ".join(p.strip() for p in parts if p and p.strip())
 

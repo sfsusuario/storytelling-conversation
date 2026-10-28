@@ -39,6 +39,8 @@ def test_scene_prompts_are_built_from_the_narration_fields():
                                                    "water, a sunny riverbank, morning, three swallows, x")
     watcher = sc.model_copy(update={"action": "the protagonist stares as a faceless creature gazes at the lens"})
     assert story_prompt(watcher, "a turtle", "x").startswith("wide shot, soft light, hopeful, a faceless creature gazes")
+    own = sc.model_copy(update={"character": "an old turtle with glasses"})
+    assert "an old turtle with glasses looks up at birds" in story_prompt(own, "a turtle", "x")
     spanish = sc.model_copy(update={"action": "El protagonista mira a los pájaros"})
     assert "a turtle mira a los pájaros" in story_prompt(spanish, "a turtle", "x")
     assert default_style("general", "terror", real_story=True) == "real" and default_style("general", "terror") == "oscuro"
@@ -124,14 +126,29 @@ def test_preview_then_continue_with_reddit_source(tmp_path, monkeypatch):
     assert story_ev["title"] == STORY.title and story_ev["source"]["author"] == "ForgottenWell"
     assert not (out / "final.mp4").exists() and (out / "01_text" / "story.json").exists()
     assert llm_calls == [1]
-    # 2. continue: the text comes from the cache, the video ends with the credits card
+    text_ev = next(e for e in events if e["type"] == "scene" and e["kind"] == "text")
+    assert text_ev["shot"] == {"action": "the protagonist looks up at birds", "setting": "a sunny riverbank, morning",
+                               "key_object": "three swallows", "shot": "wide shot, soft light, hopeful", "character": ""}
+    # 2. continue with the reviewed script: the text comes from the cache and
+    # takes the edits; the video ends with the credits card
     events.clear()
-    final = pipeline.run_story(StoryOptions(**opts), on_progress=lambda *_: None, on_event=events.append)
+    edits = {"title": "Tula nada", "scenes": {"scene_02": {"narration": "Saltó.", "character": "an old turtle", "shot": "close-up"}}}
+    final = pipeline.run_story(StoryOptions(story_edits=edits, **opts), on_progress=lambda *_: None, on_event=events.append)
     assert llm_calls == [1] and final.exists() and (out / "04_clips" / "credits.mp4").exists()
+    texts = [e for e in events if e["type"] == "scene" and e["kind"] == "text"]
+    assert texts[1]["text"] == "Saltó." and texts[1]["shot"]["character"] == "an old turtle"
+    assert next(e for e in events if e["type"] == "story")["title"] == "Tula nada"
+    assert json.loads((out / "01_text" / "story.json").read_text(encoding="utf-8"))["story"]["title"] == "Tula nada"
+    assert "«Tula nada»" in (out / "social.txt").read_text(encoding="utf-8")
+    # a plain re-run keeps the reviewed text
+    events.clear()
+    pipeline.run_story(StoryOptions(**opts), on_progress=lambda *_: None, on_event=events.append)
+    assert next(e for e in events if e["type"] == "story")["title"] == "Tula nada" and llm_calls == [1]
     assert (out / "02_images" / "credits.png").stat().st_size > 0
     assert len([e for e in events if e["type"] == "scene" and e["kind"] == "clip"]) == 5  # 4 + credits
     m = json.loads((out / "pipeline.json").read_text(encoding="utf-8"))
     assert (m["Source"], m["Source_Author"], len(m["Scenes"])) == (SOURCE["url"], "ForgottenWell", 4)
+    assert m["Scenes"][1]["Shot"]["character"] == "an old turtle" and m["Scenes"][1]["Narration"] == "Saltó."
     assert "Historia original: u/ForgottenWell en r/shortscarystories" in (out / "social.txt").read_text(encoding="utf-8")
     assert regenerate_options("switched-1", tmp_path / "output" / "cuento")["source"] == SOURCE["url"]
     runs = read_cuento("cuento", tmp_path / "output" / "cuento", "/media/cuento")

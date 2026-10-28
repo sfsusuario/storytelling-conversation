@@ -107,6 +107,9 @@ class StoryOptions:
     reroll_motion: list[str] = field(default_factory=list)
     # Prompts the user wrote for a scene's image reroll, by scene id.
     image_prompts: dict[str, str] = field(default_factory=dict)
+    # The user's review of the script (title, protagonist, scenes by id with
+    # narration / action / setting / key_object / shot / character).
+    story_edits: dict = field(default_factory=dict)
 
 
 CLIENT_OPTIONS = {f.name for f in dataclasses.fields(StoryOptions)} - {
@@ -119,6 +122,13 @@ def validate(options: StoryOptions) -> None:
     if not isinstance(options.image_prompts, dict) or not all(
             isinstance(v, str) and len(v) <= 2000 for v in options.image_prompts.values()):
         raise ValueError("image_prompts must map scene ids to text")
+    edits = options.story_edits
+    scenes = edits.get("scenes", {}) if isinstance(edits, dict) else None
+    texts = ([v for k, v in edits.items() if k != "scenes"]
+             + [v for sc in scenes.values() for v in sc.values()]
+             if isinstance(scenes, dict) and all(isinstance(sc, dict) for sc in scenes.values()) else None)
+    if texts is None or not all(isinstance(v, str) and len(v) <= 2000 for v in texts):
+        raise ValueError("story_edits must be text fields, up to 2000 characters each")
     if options.source and not valid_url(options.source):
         raise ValueError("source must be a reddit.com post URL")
     if not options.premise.strip() and not options.source:

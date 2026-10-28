@@ -34,7 +34,6 @@ export function StoryForm({
   onClear,
   error,
   onStart,
-  onPreview,
 }: {
   app: AppOptions;
   opts: StoryOptions;
@@ -45,8 +44,6 @@ export function StoryForm({
   onClear: () => void;
   error: string | null;
   onStart: () => void;
-  /** write the script only, to review it before images and voice */
-  onPreview: () => void;
 }) {
   const [picker, setPicker] = useState(false);
   const tone = app.tones.find((t) => t.id === opts.tone) ?? app.tones[0];
@@ -170,14 +167,15 @@ export function StoryForm({
                 {error}
               </p>
             )}
-            <div className="grid gap-2 sm:grid-cols-[1fr_auto]">
-              <button type="button" className="btn-primary w-full py-3 text-base" disabled={!ready} onClick={onStart}>
-                📖 Crear cuento
-              </button>
-              <button type="button" className="btn-ghost py-3" disabled={!ready} onClick={onPreview} title="Escribe el guion y párate a revisarlo antes de las imágenes y la voz">
-                📝 Solo el guion
-              </button>
-            </div>
+            <Toggle
+              checked={opts.preview}
+              onChange={(v) => setOpt("preview", v)}
+              label="Supervisar el guion"
+              hint={opts.preview ? "Se para tras escribir el texto: revisas narración, encuadres y personajes antes de las imágenes y la voz" : "Todo de una vez, sin parar a revisar"}
+            />
+            <button type="button" className="btn-primary mt-3 w-full py-3 text-base" disabled={!ready} onClick={onStart}>
+              {opts.preview ? "📝 Escribir el guion" : "📖 Crear cuento"}
+            </button>
             {!ready && <p className="hint text-center">Escribe de qué va el cuento o elige una historia real</p>}
           </div>
         </div>

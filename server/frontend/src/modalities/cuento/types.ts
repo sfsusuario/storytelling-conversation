@@ -1,6 +1,7 @@
 // The run events and system status are Escalera's: the story pipeline emits
 // the same stages and scene events, so runState and ProgressView are shared.
 export type { RunEvent, SystemStatus } from "../escalera/types";
+import type { Shot } from "../escalera/types";
 
 /** Mirrors cuento.config.StoryOptions fields the backend accepts (CLIENT_OPTIONS). */
 export interface StoryOptions {
@@ -35,6 +36,14 @@ export interface StoryOptions {
   reroll_motion: string[];
   /** The user's own prompt for a scene's image reroll, by scene id. */
   image_prompts?: Record<string, string>;
+  /** The user's review of the script, sent with "continue" after a preview. */
+  story_edits?: StoryEdits;
+}
+
+export interface StoryEdits {
+  title?: string;
+  protagonist?: string;
+  scenes?: Record<string, Partial<Shot & { narration: string }>>;
 }
 
 export interface Preset {

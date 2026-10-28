@@ -42,6 +42,9 @@ class StoryScene(BaseModel):
     setting: str      # where, time of day
     key_object: str   # the one object or detail the narration hinges on ("" if none)
     shot: str         # camera distance, light, mood
+    # the main character's look in this scene, written by the user at the
+    # review step ("" = the story's protagonist); never asked of the model
+    character: str = ""
 
     def visual(self) -> str:
         """The scene's picture in one line (subject added by the caller)."""
@@ -299,6 +302,36 @@ def _pictures(story: Story, provider: str, model: str, seed: int | None) -> Stor
     return story
 
 
+CREDITS_SEP = "\n\nHistoria original: "
+SCENE_EDITS = {"narration", "action", "setting", "key_object", "shot", "character"}
+
+
+def apply_edits(story: Story, social: str, edits: dict, cache_file: Path) -> tuple[Story, str]:
+    """The user's review of the script: title, protagonist and per-scene
+    fields (by scene id) replace the model's. Returns (story, social); the
+    cached story is updated so every later run of this folder reuses the
+    reviewed text."""
+    if not edits:
+        return story, social
+    scenes = []
+    for scene in story.scenes:
+        own = edits.get("scenes", {}).get(f"scene_{scene.index:02d}", {})
+        scenes.append(scene.model_copy(update={k: v.strip() for k, v in own.items()
+                                               if k in SCENE_EDITS and isinstance(v, str)}))
+    top = {k: edits[k].strip() for k in ("title", "protagonist")
+           if isinstance(edits.get(k), str) and edits[k].strip()}
+    story = story.model_copy(update={**top, "scenes": scenes})
+    # the social text carries the title: rebuilt, keeping the credits line
+    tail = social.split(CREDITS_SEP, 1)
+    social = _format_social(story.caption, story.hashtags, story.title) + (
+        CREDITS_SEP + tail[1] if len(tail) == 2 else "")
+    if cache_file.exists():
+        cached = json.loads(cache_file.read_text(encoding="utf-8"))
+        cached.update(story=story.model_dump(), social=social)
+        cache_file.write_text(json.dumps(cached, ensure_ascii=False, indent=2), encoding="utf-8")
+    return story, social
+
+
 def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
                    cache_dir: Path, provider: str = "auto", language: str = "es",
                    seed: int | None = None, has_photo: bool = False,
@@ -347,7 +380,7 @@ def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
     story = _pictures(story, provider, model, seed)
     social = _format_social(story.caption, story.hashtags, story.title)
     if source:
-        social += (f"\n\nHistoria original: u/{source['author']} en r/{source['subreddit']}"
+        social += (f"{CREDITS_SEP}u/{source['author']} en r/{source['subreddit']}"
                    f" · {source['url']}")
 
     cache_dir.mkdir(parents=True, exist_ok=True)

@@ -85,12 +85,23 @@ export interface HistoryRun {
   scenes: { scene_id: string; level: number; persona: string; text: string; image: string | null }[];
 }
 
+/** Cuento: one scene's picture, in English, as the image model reads it. */
+export interface Shot {
+  action: string;
+  setting: string;
+  key_object: string;
+  shot: string;
+  /** The main character's look in this scene ("" = the story's protagonist). */
+  character: string;
+}
+
 /** Events streamed by web.Run over SSE (pipeline.run_pipeline + run lifecycle). */
 export type RunEvent = { ts: number } & (
   | { type: "started"; run_id: string; upload_id: string }
   | { type: "scenes"; style_set: string; output_dir: string; scenes: { scene_id: string; level: number; persona: string }[] }
   | { type: "stage"; index: number; total: number; name: StageName; detail: string }
-  | { type: "scene"; scene_id: string; kind: "text"; text: string }
+  // Cuento's text event also carries the scene's storyboard (editable at the review step)
+  | { type: "scene"; scene_id: string; kind: "text"; text: string; shot?: Shot }
   | { type: "scene"; scene_id: string; kind: "image" | "audio" | "motion" | "clip"; cached: boolean; path_url: string | null; prompt?: string }
   | { type: "progress"; stage: StageName; scene_id: string | null; step: number; total: number; label: string }
   | { type: "log"; line: string }

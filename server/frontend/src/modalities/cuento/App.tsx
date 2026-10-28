@@ -10,7 +10,7 @@ import { STAGE_LABELS } from "../escalera/types";
 import { api, follow, store } from "./api";
 import { StoryPreview } from "./StoryPreview";
 import { StoryForm } from "./Wizard";
-import type { AppOptions, StoryOptions, SystemStatus } from "./types";
+import type { AppOptions, StoryEdits, StoryOptions, SystemStatus } from "./types";
 
 type Averages = Record<string, { avg: number; n: number }>;
 
@@ -54,7 +54,8 @@ export default function App() {
       .options()
       .then((o) => {
         setApp(o);
-        setOpts({ ...o.defaults, ...store.get<Partial<StoryOptions>>("opts", {}), force: false, force_from: null });
+        // supervised by default: the script is reviewed before images and voice
+        setOpts({ ...o.defaults, preview: true, ...store.get<Partial<StoryOptions>>("opts", {}), force: false, force_from: null });
       })
       .catch((e: Error) => setLoadError(e.message));
     api.system().then(setSystem).catch(() => setSystem(null));
@@ -108,7 +109,7 @@ export default function App() {
   // and scene is cached, so only what failed (or was rerolled) is redone.
   const rerun = async (extra: Partial<StoryOptions> = {}) => {
     const last = store.get<{ uploadId: string; opts: StoryOptions } | null>("lastRequest", null);
-    const plain = { force: false, force_from: null, reroll_images: [], reroll_motion: [], image_prompts: {}, ...extra };
+    const plain = { force: false, force_from: null, reroll_images: [], reroll_motion: [], image_prompts: {}, story_edits: {}, preview: false, ...extra };
     if (!last) return start(plain);
     setStartError(null);
     try {
@@ -242,9 +243,14 @@ export default function App() {
           </div>
         ) : showRun && run.status === "done" && run.result && !run.result.video ? (
           // "Solo el guion": the text is written; continue reuses it from the cache
-          <StoryPreview state={run} onContinue={() => start({ preview: false })} onAnother={() => start({ preview: true, force_from: "text" })} onBack={newStory} />
+          <StoryPreview
+            state={run}
+            onContinue={(edits: StoryEdits) => start({ preview: false, story_edits: edits })}
+            onAnother={() => start({ preview: true, force_from: "text" })}
+            onBack={newStory}
+          />
         ) : showRun && run.status === "done" && run.result ? (
-          <ResultView state={run} onNew={newStory} onRegenerate={(stage) => start({ force_from: stage })} onReroll={reroll} labels={labels} />
+          <ResultView state={run} onNew={newStory} onRegenerate={(stage) => start({ preview: false, force_from: stage })} onReroll={reroll} labels={labels} />
         ) : showRun ? (
           <>
             <ProgressView
@@ -283,8 +289,7 @@ export default function App() {
                 store.set("upload", null);
               }}
               error={startError}
-              onStart={() => start({ preview: false })}
-              onPreview={() => start({ preview: true })}
+              onStart={() => start()}
             />
           </div>
         )}

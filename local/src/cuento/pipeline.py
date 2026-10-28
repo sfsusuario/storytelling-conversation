@@ -33,7 +33,7 @@ from .images import (credits_card, generate_story_images, placeholder_images,
                      resolve_story_image_provider, silence_wav, story_prompt)
 from .manifest import write_story_manifest
 from .sources import fetch_story
-from .story_gen import generate_story
+from .story_gen import apply_edits, generate_story
 
 Progress = Callable[[str], None]
 EventSink = Callable[[dict], None]
@@ -154,15 +154,18 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
                                    language=options.language, seed=options.seed,
                                    has_photo=base_image is not None, keep=kept("text"),
                                    source=source)
+    if options.story_edits:
+        story, social = apply_edits(story, social, options.story_edits, output_dir / "01_text" / "story.json")
     prompts: dict[str, str] = {}
     for scene, src in zip(scenes, story.scenes):
         scene.speech_script = src.narration
         prompts[scene.scene_id] = story_prompt(src, story.protagonist, fragment)
         # with a photo the Kontext template supplies the person: scene + style only
         scene.persona = dataclasses.replace(
-            scene.persona, image_detail=f"{src.visual()}, {src.shot}, {story.protagonist}, {fragment}")
+            scene.persona, image_detail=f"{src.visual()}, {src.shot}, {src.character or story.protagonist}, {fragment}")
         log(f'  escena {scene.index}: "{src.narration}"')
-        emit("scene", scene_id=scene.scene_id, kind="text", text=src.narration)
+        emit("scene", scene_id=scene.scene_id, kind="text", text=src.narration,
+             shot=src.model_dump(include={"action", "setting", "key_object", "shot", "character"}))
     (output_dir / "social.txt").write_text(social, encoding="utf-8")
     emit("story", title=story.title, outline=story.outline, protagonist=story.protagonist,
          source=({"url": source["url"], "author": source["author"],

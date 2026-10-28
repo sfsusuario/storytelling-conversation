@@ -1,10 +1,12 @@
-import { STAGES, type RunEvent, type StageName } from "./types";
+import { STAGES, type RunEvent, type Shot, type StageName } from "./types";
 
 export interface SceneState {
   scene_id: string;
   level: number;
   persona: string;
   text?: string;
+  /** Cuento: the storyboard fields behind the image prompt. */
+  shot?: Shot;
   image?: string | null;
   audio?: string | null;
   motion?: string | null;
@@ -100,7 +102,7 @@ export function runReducer(state: RunState, event: RunEvent | { type: "reset" })
         ...s,
         scenes: s.scenes.map((sc) => {
           if (sc.scene_id !== event.scene_id) return sc;
-          if (event.kind === "text") return { ...sc, text: event.text };
+          if (event.kind === "text") return { ...sc, text: event.text, ...(event.shot ? { shot: event.shot } : {}) };
           return {
             ...sc,
             work: null,
