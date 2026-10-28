@@ -180,6 +180,7 @@ export default function App() {
     badge: (sc) => String(sc.level),
     title: (sc) => sc.persona,
     canRerollImage: (sc) => Boolean(sc.image),
+    editPrompt: false, // the story's prompts come from the storyboard
     original: () => upload?.url ?? null,
     setLabel: (s) => s,
     gridProgress: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4",

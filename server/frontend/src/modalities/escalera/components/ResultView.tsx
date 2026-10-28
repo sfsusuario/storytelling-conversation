@@ -81,12 +81,12 @@ export function ResultView({
         </div>
 
         <p className="hint mb-0">Pulsa una escena para verla o pedir otra imagen o movimiento.</p>
-        {opened && <SceneViewer scene={opened} original={labels.original(state, opened)} onClose={() => setOpen(null)} onReroll={onReroll} labels={labels} />}
+        {opened && <SceneViewer scene={opened} original={labels.original(state, opened)} onClose={() => setOpen(null)} labels={labels} />}
         <div className={labels.gridResult}>
           {state.scenes.map((sc) => (
             <figure key={sc.scene_id} className="overflow-hidden rounded-lg border border-stone-200 dark:border-stone-800">
               {sc.image && (
-                <button type="button" onClick={() => setOpen(sc.scene_id)} className="block w-full" aria-label={`Ver o regenerar ${labels.title(sc)}`}>
+                <button type="button" onClick={() => setOpen(sc.scene_id)} className="block w-full" aria-label={`Ver ${labels.title(sc)}`}>
                   <img src={apiUrl(sc.image)} alt="" className="aspect-[9/16] w-full object-cover hover:brightness-110" loading="lazy" />
                 </button>
               )}

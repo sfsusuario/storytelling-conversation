@@ -10,6 +10,8 @@ export interface SceneLabels {
   badge: (sc: SceneState) => string;
   title: (sc: SceneState) => string;
   canRerollImage: (sc: SceneState) => boolean;
+  /** "Another image" opens a dialog to edit the prompt (the backend takes one) */
+  editPrompt: boolean;
   /** "Foto original" tab source for a scene; null hides the tab */
   original: (state: RunState, sc: SceneState) => string | null;
   setLabel: (styleSet: string) => string;
@@ -22,6 +24,7 @@ export const ESCALERA_LABELS: SceneLabels = {
   badge: (sc) => `N${sc.level}`,
   title: (sc) => `N${sc.level} · ${sc.persona}`,
   canRerollImage: (sc) => sc.level > 1,
+  editPrompt: true,
   original: (state, sc) => (sc.level > 1 ? (state.scenes[0]?.image ?? null) : null),
   setLabel: (s) => `set ${s}`,
   gridProgress: "grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5",
@@ -122,7 +125,7 @@ export function RerollButtons({
   const [asking, setAsking] = useState(false);
   const btn = "rounded px-1.5 py-0.5 text-[11px] text-stone-500 hover:bg-stone-100 hover:text-orange-600 dark:hover:bg-stone-800";
   const ask = (kind: "image" | "motion") =>
-    kind === "image" && scene.prompt !== undefined ? setAsking(true) : onReroll(scene.scene_id, kind);
+    kind === "image" && labels.editPrompt ? setAsking(true) : onReroll(scene.scene_id, kind);
   const item = (kind: "image" | "motion", label: string, title: string) =>
     queued.includes(`${scene.scene_id}:${kind}`) ? (
       <span key={kind} className="px-1.5 py-0.5 text-[11px] text-amber-600" title="Se rehará en cuanto termine la escena en curso">
@@ -183,6 +186,7 @@ export function RerollDialog({
             maxLength={2000}
             rows={6}
             autoFocus
+            placeholder="Esta corrida no trae el prompt usado: escribe uno nuevo, o déjalo vacío para otra variación."
             className="mt-1 block w-full min-w-0 rounded-lg bg-white/10 p-2 text-sm text-white"
           />
         </label>
@@ -213,19 +217,16 @@ export function SceneViewer({
   scene,
   original,
   onClose,
-  onReroll,
   labels = ESCALERA_LABELS,
 }: {
   scene: SceneState;
   original: string | null;
   onClose: () => void;
-  onReroll?: Reroll;
   labels?: SceneLabels;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
   const video = scene.clip ?? scene.motion;
   const [view, setView] = useState<View>(video ? "video" : "image");
-  const [asking, setAsking] = useState(false);
   useEffect(() => {
     ref.current?.showModal();
   }, []);
@@ -268,33 +269,7 @@ export function SceneViewer({
       ) : (
         <img src={apiUrl(view === "original" ? original : scene.image)} alt="" className="max-h-[85vh] max-w-full rounded-lg object-contain" />
       )}
-      <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-        <p className="text-sm text-stone-300">{labels.title(scene)}</p>
-        {onReroll && (
-          <div className="flex gap-2">
-            {labels.canRerollImage(scene) && (
-              <button
-                type="button"
-                className="rounded-lg bg-white/15 px-3 py-1 text-sm hover:bg-white/25"
-                onClick={() => (scene.prompt !== undefined ? setAsking(true) : onReroll(scene.scene_id, "image"))}
-              >
-                🎲 Otra imagen
-              </button>
-            )}
-            {scene.motion && (
-              <button type="button" className="rounded-lg bg-white/15 px-3 py-1 text-sm hover:bg-white/25" onClick={() => onReroll(scene.scene_id, "motion")}>
-                🎲 Otro movimiento
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-      {onReroll && asking && <RerollDialog scene={scene} onReroll={onReroll} onClose={() => setAsking(false)} labels={labels} />}
-      {onReroll && (
-        <p className="mt-1 text-xs text-stone-400">
-          Rehace solo esta escena en cuanto termine la que está en curso; si ya tiene movimiento, también lo rehace. Luego sigue con lo demás.
-        </p>
-      )}
+      <p className="mt-2 text-sm text-stone-300">{labels.title(scene)}</p>
     </dialog>
   );
 }
@@ -413,7 +388,7 @@ export function ProgressView({
         )}
       </div>
 
-      {opened && <SceneViewer scene={opened} original={labels.original(state, opened)} onClose={() => setOpen(null)} onReroll={onReroll} labels={labels} />}
+      {opened && <SceneViewer scene={opened} original={labels.original(state, opened)} onClose={() => setOpen(null)} labels={labels} />}
       {state.scenes.length > 0 && (
         <div className={labels.gridProgress}>
           {state.scenes.map((sc) => (
