@@ -5,7 +5,7 @@ cloned voices from a single reference clip per character, with an
 Runs in a dedicated Python 3.10 venv (.chatterbox-venv) via
 scripts/chatterbox_worker.py — set up with install-chatterbox.ps1. CPU
 inference is slow (~1-2 min per line) but local and free; results are
-cached per turn. No word timings, so captions fall back to full-line mode.
+cached per turn. No word timings: the renderer estimates them from the line.
 """
 from __future__ import annotations
 

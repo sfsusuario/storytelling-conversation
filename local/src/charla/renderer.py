@@ -97,6 +97,25 @@ def _chunk_words(words: list[dict]) -> list[tuple[str, float, float]]:
     return chunks
 
 
+def _estimate_word_timings(text: str, duration: float) -> list[dict]:
+    """Spread the speech duration over the words by character length.
+
+    Close enough to the real pace for short caption chunks; the same trick
+    the Escalera uses for Kokoro.
+    """
+    words = text.split()
+    if not words or duration <= 0:
+        return []
+    weights = [len(w) + 1 for w in words]
+    unit = duration / sum(weights)
+    timings, t = [], 0.0
+    for word, weight in zip(words, weights):
+        d = weight * unit
+        timings.append({"t": round(t, 3), "d": round(d, 3), "w": word})
+        t += d
+    return timings
+
+
 def _sub_textfile(clips_dir: Path, name: str, content: str) -> str:
     f = clips_dir / name
     f.write_text(content, encoding="utf-8", newline="\n")
@@ -108,14 +127,18 @@ def _subtitle_filters(turn: Turn, clips_dir: Path, duration: float,
                       schwifty: bool) -> str:
     """Progressive captions: each chunk appears as it is spoken.
 
-    Falls back to the full (wrapped) text when word timings are unavailable.
+    Without word timings (XTTS, Chatterbox) they are estimated by spreading
+    the speech duration over the words by length; the full (wrapped) text is
+    the last resort.
     """
     display = _schwifty_text if schwifty else (lambda t: t)
-    if turn.word_timings:
+    words = turn.word_timings or _estimate_word_timings(
+        turn.line, turn.audio_duration or 0.0)
+    if words:
         filters = []
         # Casing as written by the scriptwriter: the line already starts
         # capitalized and keeps proper nouns (Rick, Morty, siglas) intact.
-        chunks = _chunk_words(turn.word_timings)
+        chunks = _chunk_words(words)
         for i, (text, start, end) in enumerate(chunks):
             if i == 0 and text:
                 text = text[0].upper() + text[1:]
