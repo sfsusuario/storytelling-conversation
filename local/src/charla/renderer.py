@@ -66,7 +66,7 @@ def _sub_style(fontcolor: str, fontfile: str) -> str:
     return (
         "expansion=none:"
         f"fontfile='{fontfile}':"
-        f"fontsize=h/30:fontcolor={fontcolor}:"
+        f"fontsize=h/22:fontcolor={fontcolor}:"
         "borderw=4:bordercolor=black@0.8:"
         "box=1:boxcolor=black@0.3:boxborderw=16:"
         "line_spacing=8:"
@@ -74,7 +74,9 @@ def _sub_style(fontcolor: str, fontfile: str) -> str:
     )
 
 
-_CHUNK_MAX_CHARS = 24
+# ~18 chars at h/22 fill the 720 px width in one line; the chunks are short
+# anyway now that they follow the speech instead of showing the whole turn.
+_CHUNK_MAX_CHARS = 18
 
 
 def _chunk_words(words: list[dict]) -> list[tuple[str, float, float]]:
@@ -160,7 +162,7 @@ def _subtitle_filters(turn: Turn, clips_dir: Path, duration: float,
     text = turn.line.strip()
     text = text[0].upper() + text[1:] if text else text
     text = display(text)
-    wrapped = "\n".join(textwrap.wrap(text, width=28))
+    wrapped = "\n".join(textwrap.wrap(text, width=_CHUNK_MAX_CHARS + 4))
     path = _sub_textfile(clips_dir, f"{turn.turn_id}.sub.txt", wrapped)
     end = max(0.5, duration - 0.15)
     return (f"drawtext=textfile='{path}':{style}:"
