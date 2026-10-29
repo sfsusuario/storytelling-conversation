@@ -24,6 +24,8 @@ FLUX_GGUF = ("https://huggingface.co/QuantStack/FLUX.1-Kontext-dev-GGUF/"
 SDXL_REPO = "stabilityai/stable-diffusion-xl-base-1.0"
 SDXL_NEGATIVE = ("deformed face, distorted features, extra limbs, blurry, "
                  "low quality, watermark, text")
+# for personas whose face is meant to change ("descenso")
+SDXL_NEGATIVE_FACE = "extra limbs, blurry, low quality, watermark, text"
 LOCAL_MAX_EDGE = 1024
 # Kontext from pure noise re-poses the subject to fit the new setting; starting
 # from the photo's latents keeps pose and framing. Lower = closer to the photo.
@@ -172,7 +174,8 @@ def generate_local_images(provider: str, pending: list[tuple[Scene, Path]],
                              generator=generator, callback_on_step_end=step_cb).images[0]
             else:
                 image = pipe(prompt=scene.visual_style_prompt,
-                             negative_prompt=SDXL_NEGATIVE, image=base,
+                             negative_prompt=(SDXL_NEGATIVE_FACE if scene.persona.face
+                                              else SDXL_NEGATIVE), image=base,
                              ip_adapter_image=base, strength=0.55,
                              num_inference_steps=30, guidance_scale=6.0,
                              generator=generator, callback_on_step_end=step_cb).images[0]

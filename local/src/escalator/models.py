@@ -10,7 +10,10 @@ class Persona:
     name: str               # "Medieval Knight"
     register: str           # guidance for the text rewrite (tone, vocabulary, syntax)
     image_detail: str       # wardrobe/background/lighting/art-style block for image gen
-    escalation: str = "sophistication"  # what grows level to level: sophistication | absurdity
+    escalation: str = "sophistication"  # what grows level to level: sophistication | absurdity | despair
+    # How the face itself changes (expression, skin, eyes). Empty = the face is
+    # kept exactly as in the photo, which is what every ladder but "descenso" wants.
+    face: str = ""
 
 
 @dataclass

@@ -128,6 +128,24 @@ def test_excuses_set_uses_absurdity_rules():
     assert "sophistication must strictly increase" in build_rewrite_system_prompt("es")
 
 
+def test_descenso_changes_the_face_and_nothing_else_does():
+    ladder = STYLE_SETS["descenso"]
+    assert [p.escalation for p in ladder] == ["despair"] * 5 and all(p.face for p in ladder)
+    rules = build_rewrite_system_prompt("es", "despair")
+    assert "NEVER mention self-harm" in rules and "Length does NOT grow" in rules
+    for provider in ("gemini", "flux-kontext"):
+        prompt = build_image_prompt(ladder[4], provider)
+        assert ladder[4].face in prompt and ladder[4].image_detail in prompt
+        assert "same face" not in prompt and "same age" not in prompt
+    # every other ladder keeps the untouched-face prompts
+    for name, other in STYLE_SETS.items():
+        if name == "descenso":
+            continue
+        assert all(not p.face for p in other)
+        assert "same face" in build_image_prompt(other[2], "flux-kontext")
+        assert "NEVER cartoonify, caricature or redraw the face" in build_image_prompt(other[2])
+
+
 def test_kontext_gets_short_edit_prompt():
     persona = STYLE_SETS["military"][1]
     prompt = build_image_prompt(persona, "flux-kontext")

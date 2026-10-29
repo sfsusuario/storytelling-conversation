@@ -161,6 +161,11 @@ BACKGROUND_SOUNDS = {
              "+0.18*sin(2*PI*116.54*t):s=44100"
              ",lowpass=f=600,tremolo=f=0.1:d=0.3" + _STEREO,
 }
+# descending minor drone with a slow sub pulse and a sour detuned overtone
+BACKGROUND_SOUNDS["descenso"] = (
+    "aevalsrc=0.32*sin(2*PI*41.2*t)+0.2*sin(2*PI*61.74*t)"
+    "+0.12*sin(2*PI*123.47*t)+0.06*sin(2*PI*131*t):s=44100"
+    ",lowpass=f=500,tremolo=f=0.07:d=0.45" + _STEREO)
 BACKGROUND_SOUNDS["_default"] = BACKGROUND_SOUNDS["epochs"]
 
 
@@ -496,6 +501,55 @@ STYLE_SETS: dict[str, list[Persona]] = {
                 "cracked landscape with fire, lightning and ash rain, "
                 "hellish orange-and-black light, epic apocalyptic concept art"),
     ],
+    "descenso": [
+        Persona(1, "Still Smiling",
+                "Upbeat everyday speech, a little too cheerful, reassuring "
+                "everyone that all is well.",
+                "the same casual clothes, a bright tidy living room with "
+                "morning sunlight through the window, warm natural light, "
+                "candid lifestyle photography",
+                escalation="despair",
+                face="a warm genuine smile, bright eyes, healthy skin"),
+        Persona(2, "Forced Smile",
+                "Tries to sound fine and almost manages: small hesitations, "
+                "a joke that lands flat, reassurances nobody asked for.",
+                "the same clothes slightly wrinkled, the same room with the "
+                "curtains half drawn and dishes piling up, dimmer afternoon "
+                "light, muted realism",
+                escalation="despair",
+                face="a tight forced smile that does not reach the eyes, faint "
+                     "dark circles, slightly paler skin"),
+        Persona(3, "Gone Quiet",
+                "Flat, detached, emotionless: short sentences, no adjectives, "
+                "answers that do not care about the question.",
+                "a loose grey hoodie, the same room now dim and cluttered with "
+                "the window covered, cold bluish light from a screen, bleak "
+                "desaturated realism",
+                escalation="despair",
+                face="no expression at all, hollow unfocused eyes, grey "
+                     "lifeless skin, sunken cheeks, uncombed hair"),
+        Persona(4, "Hollow",
+                "A hollow whisper of someone who gave up: fragments, long "
+                "pauses, the voice barely there.",
+                "a stained dark sweater, a dark room with peeling walls and a "
+                "single flickering bulb, deep shadows, oppressive horror-film "
+                "realism",
+                escalation="despair",
+                face="gaunt and sunken face, deep black circles under glassy "
+                     "unblinking eyes, cracked grey skin, thinning hair, "
+                     "mouth slightly open, deeply unsettling"),
+        Persona(5, "Something Else",
+                "Something cold and not quite human speaking through them: "
+                "calm, slow, unnervingly polite, one chilling line.",
+                "rotting black rags, a pitch-black void where the room used to "
+                "be with faint fog at the floor, a single harsh light from "
+                "below, nightmare horror concept art",
+                escalation="despair",
+                face="a corpse-like distorted face, skin grey and veined, "
+                     "eyes fully black and far too wide, a thin smile too "
+                     "wide for the face, still recognizably the same person "
+                     "underneath, terrifying"),
+    ],
     "arcane": [
         Persona(1, "Curious Apprentice",
                 "Excitable apprentice chatter. Half-understood terms, wide-eyed wonder.",
@@ -645,6 +699,26 @@ ESCALATION_RULES = {
   5. The sun briefly forgot to rise, so by the universe's clock I'm actually
      early.""",
                   "giving increasingly absurd excuses"),
+    "despair": ("""\
+- Preserve the core meaning of the original phrase, but the SPEAKER sinks:
+  stage 2 still tries to sound fine and fails; stage 3 is flat, detached,
+  emotionless; stage 4 is a hollow whisper of someone who gave up; stage 5
+  sounds like something cold and not quite human speaking through them.
+- From stage 2 on, never repeat or quote the original wording; say the same
+  idea in the register of that stage.
+- Length does NOT grow: every stage stays roughly 5-15 words, and from stage 3
+  on sentences get shorter, sparser, broken by pauses (use commas and full
+  stops, not ellipses). Stage 5 may be a single chilling line.
+- Dread, emptiness and unease only: NEVER mention self-harm, suicide, death
+  wishes or methods, and never address the viewer with instructions. This is
+  horror atmosphere for social media, not a cry for help.
+- Example (phrase "I'm fine", descenso ladder):
+  1. I'm fine.
+  2. Totally fine, honestly. Just a bit tired lately, that's all.
+  3. Fine. Everything is fine. It doesn't really matter.
+  4. Nothing feels like anything anymore. I stopped noticing when.
+  5. There is nobody left in here to be fine.""",
+                "sinking from a smile into something hollow and dark"),
 }
 
 
@@ -701,7 +775,44 @@ lighting matching the new setting.\
 """
 
 
+# Ladders whose point IS the face changing ("descenso"): same person, same
+# pose, but the expression and skin follow persona.face.
+IMAGE_FACE_PROMPT_TEMPLATE = """\
+Transform this photo into: {name} ({escalation} level {level} of 5).
+
+KEEP EXACTLY AS IN THE REFERENCE PHOTO — non-negotiable:
+- The SAME person, still clearly recognizable: facial structure, eye shape, \
+hair line and likeness, rendered with photographic fidelity — NEVER \
+cartoonify or redraw them as someone else.
+- Their pose and body position, camera angle, distance and composition.
+
+CHANGE — and here be bold:
+- Their face: {face}.
+- Their clothing and the environment around them: {image_detail}.
+
+Cinematic horror-film quality, coherent light on the subject matching the \
+new scene.\
+"""
+
+KONTEXT_FACE_TEMPLATE = """\
+Keep the person exactly where they are, in the exact same pose and body \
+position, same camera angle and framing, still recognizable as the same \
+person. Change their face to: {face}. Change their clothes and the \
+background to a {name} look: {image_detail}. Do not put anything in the \
+person's hands and do not move them. Photorealistic, lighting matching the \
+new setting.\
+"""
+
+
 def build_image_prompt(persona: Persona, provider: str = "gemini") -> str:
+    if persona.face:
+        if provider == "flux-kontext":
+            return KONTEXT_FACE_TEMPLATE.format(
+                name=persona.name, face=persona.face,
+                image_detail=persona.image_detail)
+        return IMAGE_FACE_PROMPT_TEMPLATE.format(
+            name=persona.name, level=persona.level, face=persona.face,
+            escalation=persona.escalation, image_detail=persona.image_detail)
     if provider == "flux-kontext":
         return KONTEXT_PROMPT_TEMPLATE.format(name=persona.name,
                                               image_detail=persona.image_detail)
