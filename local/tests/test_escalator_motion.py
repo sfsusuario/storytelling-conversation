@@ -128,18 +128,26 @@ def test_excuses_set_uses_absurdity_rules():
     assert "sophistication must strictly increase" in build_rewrite_system_prompt("es")
 
 
-def test_descenso_changes_the_face_and_nothing_else_does():
-    ladder = STYLE_SETS["descenso"]
-    assert [p.escalation for p in ladder] == ["despair"] * 5 and all(p.face for p in ladder)
-    rules = build_rewrite_system_prompt("es", "despair")
-    assert "NEVER mention self-harm" in rules and "Length does NOT grow" in rules
-    for provider in ("gemini", "flux-kontext"):
-        prompt = build_image_prompt(ladder[4], provider)
-        assert ladder[4].face in prompt and ladder[4].image_detail in prompt
-        assert "same face" not in prompt and "same age" not in prompt
+FACE_LADDERS = {"descenso": "despair", "locura": "madness"}
+
+
+def test_face_ladders_change_the_face_and_nothing_else_does():
+    for name, escalation in FACE_LADDERS.items():
+        ladder = STYLE_SETS[name]
+        assert [p.escalation for p in ladder] == [escalation] * 5 and all(p.face for p in ladder)
+        rules = build_rewrite_system_prompt("es", escalation)
+        assert "NEVER mention self-harm" in rules and f"{name} ladder" in rules
+        for provider in ("gemini", "flux-kontext"):
+            prompt = build_image_prompt(ladder[4], provider)
+            assert ladder[4].face in prompt and ladder[4].image_detail in prompt
+            assert "same face" not in prompt and "same age" not in prompt
+            # the edit opens the prompt; "keep" clauses come after (Kontext obeys the opening)
+            assert prompt.lower().startswith("make th")
+            assert "same pose" in prompt.lower() and "framing" in prompt
+            assert ladder[4].name not in prompt
     # every other ladder keeps the untouched-face prompts
     for name, other in STYLE_SETS.items():
-        if name == "descenso":
+        if name in FACE_LADDERS:
             continue
         assert all(not p.face for p in other)
         assert "same face" in build_image_prompt(other[2], "flux-kontext")

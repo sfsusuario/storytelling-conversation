@@ -29,6 +29,7 @@ MUSIC_LIBRARY: dict[str, str] = {
     "anger": "Volatile Reaction",
     "excuses": "Monkeys Spinning Monkeys",
     "descenso": "Dark Walk",
+    "locura": "Ossuary 6 - Air",
     "_default": "Carefree",
 }
 

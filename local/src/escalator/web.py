@@ -36,7 +36,7 @@ SET_LABELS_ES = {
     "arcane": "magia arcana", "epochs": "épocas de la historia",
     "wealth": "escalada de riqueza", "tech": "profesiones tech",
     "anger": "escalada de enfado", "excuses": "excusas absurdas",
-    "descenso": "descenso a la oscuridad",
+    "descenso": "descenso a la oscuridad", "locura": "descenso a la locura",
 }
 
 

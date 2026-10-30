@@ -166,6 +166,11 @@ BACKGROUND_SOUNDS["descenso"] = (
     "aevalsrc=0.32*sin(2*PI*41.2*t)+0.2*sin(2*PI*61.74*t)"
     "+0.12*sin(2*PI*123.47*t)+0.06*sin(2*PI*131*t):s=44100"
     ",lowpass=f=500,tremolo=f=0.07:d=0.45" + _STEREO)
+# uneasy dissonant shimmer (tritone + detuned high partial) with a nervous flutter
+BACKGROUND_SOUNDS["locura"] = (
+    "aevalsrc=0.26*sin(2*PI*110*t)+0.18*sin(2*PI*155.56*t)"
+    "+0.08*sin(2*PI*466.16*t)+0.06*sin(2*PI*470*t):s=44100"
+    ",lowpass=f=1600,tremolo=f=5.5:d=0.35" + _STEREO)
 BACKGROUND_SOUNDS["_default"] = BACKGROUND_SOUNDS["epochs"]
 
 
@@ -502,53 +507,109 @@ STYLE_SETS: dict[str, list[Persona]] = {
                 "hellish orange-and-black light, epic apocalyptic concept art"),
     ],
     "descenso": [
-        Persona(1, "Still Smiling",
-                "Upbeat everyday speech, a little too cheerful, reassuring "
-                "everyone that all is well.",
-                "the same casual clothes, a bright tidy living room with "
-                "morning sunlight through the window, warm natural light, "
-                "candid lifestyle photography",
+        Persona(1, "Intact",
+                "Ordinary everyday speech, calm, a little tired underneath.",
+                "exactly as they are, healthy, untouched",
                 escalation="despair",
-                face="a warm genuine smile, bright eyes, healthy skin"),
-        Persona(2, "Forced Smile",
-                "Tries to sound fine and almost manages: small hesitations, "
-                "a joke that lands flat, reassurances nobody asked for.",
-                "the same clothes slightly wrinkled, the same room with the "
-                "curtains half drawn and dishes piling up, dimmer afternoon "
-                "light, muted realism",
+                face="unchanged, exactly as in the photo"),
+        Persona(2, "Worn",
+                "Flat and weary: says it like it stopped mattering a while ago.",
+                "clearly exhausted and unwell, like after weeks without sleep: "
+                "noticeably thinner, shoulders slumped, skin pale and greyish, "
+                "clothes wrinkled, stained and unwashed, hair messy and greasy",
                 escalation="despair",
-                face="a tight forced smile that does not reach the eyes, faint "
-                     "dark circles, slightly paler skin"),
-        Persona(3, "Gone Quiet",
-                "Flat, detached, emotionless: short sentences, no adjectives, "
-                "answers that do not care about the question.",
-                "a loose grey hoodie, the same room now dim and cluttered with "
-                "the window covered, cold bluish light from a screen, bleak "
-                "desaturated realism",
+                face="pale and drawn, heavy dark circles under the eyes, "
+                     "chapped lips, no smile, an empty tired expression"),
+        Persona(3, "Haggard",
+                "Bitter and hopeless: nothing will improve and it says so.",
+                "seriously ill and wasting away, like a long terminal "
+                "illness: much thinner and bony, skin grey, dull and blotchy "
+                "on every visible part of the body, clothes stained, loose "
+                "and threadbare, hair thin and falling out",
                 escalation="despair",
-                face="no expression at all, hollow unfocused eyes, grey "
-                     "lifeless skin, sunken cheeks, uncombed hair"),
-        Persona(4, "Hollow",
-                "A hollow whisper of someone who gave up: fragments, long "
-                "pauses, the voice barely there.",
-                "a stained dark sweater, a dark room with peeling walls and a "
-                "single flickering bulb, deep shadows, oppressive horror-film "
-                "realism",
+                face="gaunt and haggard, grey sallow skin, deeply sunken "
+                     "cheeks, bloodshot hollow eyes with dark rings, cracked "
+                     "lips, a lifeless stare"),
+        Persona(4, "Rotting",
+                "Cold nihilism: everything decays, everyone forgets, nothing "
+                "was ever worth it.",
+                "like a corpse a few days dead, with strong horror makeup: "
+                "emaciated, skin grey-green, bruised, blistered and peeling "
+                "wherever it shows, dark veins under it, clothes torn and "
+                "soiled, hair falling out in patches",
                 escalation="despair",
-                face="gaunt and sunken face, deep black circles under glassy "
-                     "unblinking eyes, cracked grey skin, thinning hair, "
-                     "mouth slightly open, deeply unsettling"),
-        Persona(5, "Something Else",
-                "Something cold and not quite human speaking through them: "
-                "calm, slow, unnervingly polite, one chilling line.",
-                "rotting black rags, a pitch-black void where the room used to "
-                "be with faint fog at the floor, a single harsh light from "
-                "below, nightmare horror concept art",
+                face="decaying skin, blotched, cracked and peeling, deep "
+                     "black hollows around glassy clouded dead eyes, "
+                     "skull-like cheekbones, lips shrunken back, deeply "
+                     "disturbing"),
+        Persona(5, "Remains",
+                "The last words of something already gone: calm, final, "
+                "chilling.",
+                "like a decomposing corpse that is still standing in the same "
+                "pose, extreme horror prosthetics: skin rotted black, torn "
+                "and sloughing off, bone showing through on the hands and "
+                "body, clothes reduced to filthy rotten rags",
                 escalation="despair",
-                face="a corpse-like distorted face, skin grey and veined, "
-                     "eyes fully black and far too wide, a thin smile too "
-                     "wide for the face, still recognizably the same person "
-                     "underneath, terrifying"),
+                face="a decomposing corpse face, rotted skin torn open over "
+                     "the bone, sunken clouded dead eyes, teeth bared through "
+                     "missing lips, still recognizably the same person, "
+                     "horrifying"),
+    ],
+    "locura": [
+        Persona(1, "Composed",
+                "Ordinary everyday speech, calm and reasonable.",
+                "exactly as they are, calm and composed, untouched",
+                escalation="madness",
+                face="unchanged, exactly as in the photo"),
+        Persona(2, "Twitchy",
+                "Slightly off: talks a bit too fast, laughs at the wrong "
+                "moment, repeats a word, insists everything is under control.",
+                "visibly on edge and sleep-deprived: tense shoulders, hair "
+                "starting to stick out in tufts, collar askew, a few buttons "
+                "undone, clothes slightly rumpled",
+                escalation="madness",
+                face="a strained too-wide smile, eyes a little too open and "
+                     "bloodshot, one eyebrow raised, faint dark circles, "
+                     "slightly sweaty skin"),
+        Persona(3, "Unhinged",
+                "Erratic and paranoid: jumps between ideas, hears things, "
+                "suspects the listener, giggles mid-sentence, whispers then "
+                "shouts.",
+                "clearly unstable and unkempt: wild uncombed hair standing "
+                "up, clothes dishevelled, half untucked and stained, a "
+                "scribbled note or ink smudges on the hands",
+                escalation="madness",
+                face="a manic grin with teeth showing, wide staring bloodshot "
+                     "eyes that do not blink, one eye slightly larger than "
+                     "the other, twitching brow, sweat on the forehead"),
+        Persona(4, "Deranged",
+                "Full delusion: talks to someone who is not there, invents a "
+                "grand conspiracy or mission, laughs and sobs in the same "
+                "breath, frightening intensity.",
+                "like a deranged asylum patient, with strong film makeup: "
+                "gaunt, wild matted hair in every direction, clothes torn, "
+                "filthy and hanging off, scratches on the arms and neck, "
+                "fingernails dirty and broken",
+                escalation="madness",
+                face="a crazed distorted grin stretched far too wide, bulging "
+                     "bloodshot eyes with tiny pupils staring in slightly "
+                     "different directions, veins standing out on the "
+                     "temples, drool at the corner of the mouth, hair "
+                     "plastered to a sweaty forehead, deeply unsettling"),
+        Persona(5, "Gone",
+                "Total madness: an eerily calm, singsong voice saying "
+                "something that makes no sense yet feels like a threat, "
+                "one chilling line.",
+                "like a monster of pure insanity in extreme horror makeup: "
+                "emaciated, hair torn out in patches, skin pale and bruised, "
+                "clothes shredded rags, nails cracked and bloody from "
+                "scratching, body rigid and trembling in the same pose",
+                escalation="madness",
+                face="a horrifying inhuman grin splitting the face from ear "
+                     "to ear, eyes huge, black-ringed and completely wild, "
+                     "one pupil blown wide, skin pale with burst capillaries, "
+                     "scratches across the cheeks, still recognizably the "
+                     "same person, terrifying"),
     ],
     "arcane": [
         Persona(1, "Curious Apprentice",
@@ -700,25 +761,52 @@ ESCALATION_RULES = {
      early.""",
                   "giving increasingly absurd excuses"),
     "despair": ("""\
-- Preserve the core meaning of the original phrase, but the SPEAKER sinks:
-  stage 2 still tries to sound fine and fails; stage 3 is flat, detached,
-  emotionless; stage 4 is a hollow whisper of someone who gave up; stage 5
-  sounds like something cold and not quite human speaking through them.
+- Preserve the core meaning of the original phrase, but each stage reads it
+  through a darker, more pessimistic mind: stage 2 is weary, stage 3 bitter
+  and hopeless, stage 4 cold nihilism (everything rots, everyone forgets,
+  nothing ever mattered), stage 5 the final words of something already gone.
+- Be harsh and bleak, not poetic or melodramatic: plain, blunt, heavy words.
+  Every stage must feel worse than the previous one.
 - From stage 2 on, never repeat or quote the original wording; say the same
-  idea in the register of that stage.
-- Length does NOT grow: every stage stays roughly 5-15 words, and from stage 3
-  on sentences get shorter, sparser, broken by pauses (use commas and full
-  stops, not ellipses). Stage 5 may be a single chilling line.
-- Dread, emptiness and unease only: NEVER mention self-harm, suicide, death
-  wishes or methods, and never address the viewer with instructions. This is
-  horror atmosphere for social media, not a cry for help.
+  idea from that stage's despair.
+- Length does NOT grow: every stage stays roughly 6-16 words, short blunt
+  sentences. Stage 5 may be a single line that lands like a verdict.
+- Dread, emptiness and decay only: NEVER mention self-harm, suicide, wanting
+  to die or methods, and never give the viewer instructions. This is horror
+  atmosphere for social media, not a cry for help.
 - Example (phrase "I'm fine", descenso ladder):
   1. I'm fine.
-  2. Totally fine, honestly. Just a bit tired lately, that's all.
-  3. Fine. Everything is fine. It doesn't really matter.
-  4. Nothing feels like anything anymore. I stopped noticing when.
-  5. There is nobody left in here to be fine.""",
-                "sinking from a smile into something hollow and dark"),
+  2. Fine. Same as yesterday. Same as tomorrow.
+  3. Nothing gets better. You just get used to it.
+  4. Everything rots. People, plans, memories. Even this.
+  5. There was never anyone here to be fine.""",
+                "decaying a little more at every level"),
+    "madness": ("""\
+- Preserve the core meaning of the original phrase, but the SPEAKER loses
+  their mind a little more at every stage: stage 2 is slightly off (too fast,
+  a wrong laugh, a repeated word, insisting all is under control), stage 3
+  erratic and paranoid (jumps between ideas, suspects the listener, giggles
+  mid-sentence), stage 4 full delusion (talks to someone who is not there,
+  a grand conspiracy or mission, laughs and sobs at once), stage 5 total
+  madness: eerily calm, singsong, nonsense that feels like a threat.
+- From stage 2 on, never repeat or quote the original wording; say the same
+  idea the way that stage's mind would say it.
+- Make it unsettling, not cartoonish: no "muahaha", no random words for the
+  sake of it; every line still follows a twisted logic of its own. Written
+  tics are allowed and encouraged: a repeated word, a sentence that stops
+  and restarts, a sudden question to nobody.
+- Length does NOT grow much: every stage stays roughly 6-18 words. Stage 5
+  may be a single calm line that lands like a threat.
+- Dread only: NEVER mention self-harm, suicide, hurting specific people,
+  weapons or methods, and never give the viewer instructions. This is horror
+  atmosphere for social media, not a cry for help.
+- Example (phrase "I'm fine", locura ladder):
+  1. I'm fine.
+  2. Fine, fine, totally fine. Why, who said I wasn't? Ha. Fine.
+  3. I'm fine. They keep asking because they know. You know too, don't you.
+  4. Shh. He says I'm fine. He's been saying it all night from inside the wall.
+  5. We are all fine in here. Come see.""",
+                "slipping a little further into madness at every level"),
 }
 
 
@@ -776,31 +864,23 @@ lighting matching the new setting.\
 
 
 # Ladders whose point IS the face changing ("descenso"): same person, same
-# pose, but the expression and skin follow persona.face.
+# pose, but the body and face follow persona.image_detail / persona.face.
+# The edit comes FIRST: Kontext obeys the opening instruction, and a prompt
+# that opens with "keep everything" returns the photo untouched (tested).
 IMAGE_FACE_PROMPT_TEMPLATE = """\
-Transform this photo into: {name} ({escalation} level {level} of 5).
+Make the person in this photo look {image_detail} (level {level} of 5). Their face: {face}. The change must be obvious and strong at a glance, \
+rendered as realistic film makeup and prosthetics.
 
-KEEP EXACTLY AS IN THE REFERENCE PHOTO — non-negotiable:
-- The SAME person, still clearly recognizable: facial structure, eye shape, \
-hair line and likeness, rendered with photographic fidelity — NEVER \
-cartoonify or redraw them as someone else.
-- Their pose and body position, camera angle, distance and composition.
-
-CHANGE — and here be bold:
-- Their face: {face}.
-- Their clothing and the environment around them: {image_detail}.
-
-Cinematic horror-film quality, coherent light on the subject matching the \
-new scene.\
+While doing so, keep from the reference photo: the same person, still \
+recognizable; the exact same pose, head angle, gaze, arms and hands; the \
+same camera angle, crop and framing; the same background and lighting. \
+Photorealistic.\
 """
 
 KONTEXT_FACE_TEMPLATE = """\
-Keep the person exactly where they are, in the exact same pose and body \
-position, same camera angle and framing, still recognizable as the same \
-person. Change their face to: {face}. Change their clothes and the \
-background to a {name} look: {image_detail}. Do not put anything in the \
-person's hands and do not move them. Photorealistic, lighting matching the \
-new setting.\
+Make this person look {image_detail}. Their face: {face}. The change must be \
+obvious, like realistic film makeup. Same person, same pose, same hands, \
+same camera angle, same framing, same background.\
 """
 
 
@@ -808,11 +888,10 @@ def build_image_prompt(persona: Persona, provider: str = "gemini") -> str:
     if persona.face:
         if provider == "flux-kontext":
             return KONTEXT_FACE_TEMPLATE.format(
-                name=persona.name, face=persona.face,
-                image_detail=persona.image_detail)
+                face=persona.face, image_detail=persona.image_detail)
         return IMAGE_FACE_PROMPT_TEMPLATE.format(
-            name=persona.name, level=persona.level, face=persona.face,
-            escalation=persona.escalation, image_detail=persona.image_detail)
+            level=persona.level, face=persona.face,
+            image_detail=persona.image_detail)
     if provider == "flux-kontext":
         return KONTEXT_PROMPT_TEMPLATE.format(name=persona.name,
                                               image_detail=persona.image_detail)
