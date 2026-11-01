@@ -1,6 +1,7 @@
 """Story pipeline end to end in test mode: a stubbed story, placeholder
 images, real edge TTS + ffmpeg render, then the manifest and the studio's
 history reader on the result."""
+import json
 from pathlib import Path
 
 import pytest
@@ -257,3 +258,42 @@ def test_own_text_is_split_in_the_users_words_without_credits(tmp_path, monkeypa
     assert len(calls) == 1
     make("otra")
     assert len(calls) == 2
+
+
+def test_pasted_script_skips_the_text_model_and_keeps_the_review(tmp_path, monkeypatch):
+    from cuento.manifest import regenerate_options
+    monkeypatch.chdir(tmp_path)
+    def no_model(*a):
+        raise AssertionError("a pasted script must not need a text model")
+    monkeypatch.setattr(pipeline, "resolve_text_backend", no_model)
+    script = {"title": "Tula", "protagonist": "a turtle", "caption": "Mira", "hashtags": ["tula"],
+              "scenes": [{"index": i, "narration": f" Escena {i}. ", "action": "the protagonist walks",
+                          "setting": "a road"} for i in range(1, 5)]}
+    out = tmp_path / "output" / "cuento" / "pegado-1"
+    opts = dict(script=script, scenes=4, test_mode=True, tts_provider="edge", voice="es-ES-AlvaroNeural",
+                width=540, height=960, watermark="", motion="none", output_dir=out)
+    events = []
+    # with supervision: stops at the script, like a generated one
+    assert pipeline.run_story(StoryOptions(preview=True, **opts), on_progress=lambda *_: None,
+                              on_event=events.append) is None
+    assert next(e for e in events if e["type"] == "story")["title"] == "Tula"
+    texts = [e["text"] for e in events if e["type"] == "scene" and e["kind"] == "text"]
+    assert texts == [f"Escena {i}." for i in range(1, 5)]
+    # the review's edit stays when the same script runs again without it
+    edits = {"scenes": {"scene_02": {"narration": "Revisada."}}}
+    pipeline.run_story(StoryOptions(preview=True, story_edits=edits, **opts), on_progress=lambda *_: None)
+    events.clear()
+    pipeline.run_story(StoryOptions(preview=True, **opts), on_progress=lambda *_: None, on_event=events.append)
+    assert [e["text"] for e in events if e["type"] == "scene" and e["kind"] == "text"][1] == "Revisada."
+    # a new script is a new story
+    other = {**script, "title": "Otra"}
+    events.clear()
+    pipeline.run_story(StoryOptions(preview=True, **{**opts, "script": other}), on_progress=lambda *_: None,
+                       on_event=events.append)
+    assert next(e for e in events if e["type"] == "story")["title"] == "Otra"
+    # the manifest gives it back to "Otra version"
+    (out / "final.mp4").write_bytes(b"mp4")
+    (out / "pipeline.json").write_text(json.dumps({
+        "Premise": "Tula", "Script": script, "Tone": "general", "Genre": "terror",
+        "Resolution": "540x960", "Scenes": [{}] * 4}), encoding="utf-8")
+    assert regenerate_options("pegado-1", out.parent)["script"] == script

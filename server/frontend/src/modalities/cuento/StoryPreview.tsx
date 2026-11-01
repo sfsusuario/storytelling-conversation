@@ -131,7 +131,7 @@ export function diffEdits(scenes: SceneState[], drafts: Record<string, SceneDraf
 
 /** A preview run ended: the script is written, nothing rendered yet. The
  * user reviews (and edits) narration, storyboard and characters, then continues. */
-export function StoryPreview({ state, onContinue, onAnother, onBack }: { state: RunState; onContinue: (edits: StoryEdits) => void; onAnother: () => void; onBack: () => void }) {
+export function StoryPreview({ state, onContinue, onAnother, onBack }: { state: RunState; onContinue: (edits: StoryEdits) => void; onAnother?: () => void; onBack: () => void }) {
   const story = state.story;
   const social = state.result?.social ?? "";
   const [title, setTitle] = useState(story?.title ?? "");
@@ -240,14 +240,16 @@ export function StoryPreview({ state, onContinue, onAnother, onBack }: { state: 
           <button type="button" className="btn-primary" onClick={() => onContinue(edits)}>
             🎬 {dirty ? "Guardar cambios y continuar" : "Continuar"}: imágenes, voz y video
           </button>
-          <button type="button" className="btn-ghost" onClick={onAnother}>
-            🎲 Otro guion
-          </button>
+          {onAnother && (
+            <button type="button" className="btn-ghost" onClick={onAnother}>
+              🎲 Otro guion
+            </button>
+          )}
           <button type="button" className="btn-ghost" onClick={onBack}>
             Volver
           </button>
         </div>
-        <p className="hint mb-0">Al continuar se usa este guion con tus cambios; «Otro guion» lo escribe de nuevo.</p>
+        <p className="hint mb-0">Al continuar se usa este guion con tus cambios{onAnother && "; «Otro guion» lo escribe de nuevo"}.</p>
       </div>
       {paste && (
         <div role="dialog" aria-modal="true" aria-labelledby="paste-title" className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setPaste(null)}>

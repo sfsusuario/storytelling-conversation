@@ -103,7 +103,15 @@ export default function App() {
     setStartError(null);
     try {
       // the other mode's text stays in the form as a draft, but is not sent
-      const sent = { ...opts, premise: free ? "" : opts.premise.trim(), own_text: free ? opts.own_text.trim() : "", ...extra };
+      // a pasted script replaces both, and sets how many scenes there are
+      const pasted = opts.script?.scenes?.length;
+      const sent = {
+        ...opts,
+        premise: free || pasted ? "" : opts.premise.trim(),
+        own_text: free && !pasted ? opts.own_text.trim() : "",
+        ...(pasted ? { scenes: pasted } : {}),
+        ...extra,
+      };
       const { run_id } = await api.createRun(uploadId, sent);
       store.set("lastRequest", { uploadId, opts: sent });
       attach(run_id);
@@ -253,11 +261,17 @@ export default function App() {
           <StoryPreview
             state={run}
             onContinue={(edits: StoryEdits) => start({ preview: false, story_edits: edits })}
-            onAnother={() => start({ preview: true, force_from: "text" })}
+            onAnother={opts.script?.scenes ? undefined : () => start({ preview: true, force_from: "text" })}
             onBack={newStory}
           />
         ) : showRun && run.status === "done" && run.result ? (
-          <ResultView state={run} onNew={newStory} onRegenerate={(stage) => start({ preview: false, force_from: stage })} onReroll={reroll} labels={labels} />
+          <ResultView
+            state={run}
+            onNew={() => {
+              setOpt("script", {});
+              newStory();
+            }}
+            onRegenerate={(stage) => start({ preview: false, force_from: stage })} onReroll={reroll} labels={labels} />
         ) : showRun ? (
           <>
             <ProgressView

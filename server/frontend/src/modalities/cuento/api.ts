@@ -12,6 +12,12 @@ export const api = {
     fetch(`${BASE}/api/sources/${encodeURIComponent(subreddit)}/stories?${new URLSearchParams({ period, refresh: refresh ? "1" : "0" })}`).then((r) =>
       json<SourceList>(r),
     ),
+  scriptPrompt: (options: Partial<StoryOptions>, has_photo: boolean) =>
+    fetch(`${BASE}/api/script-prompt`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ options, has_photo }),
+    }).then((r) => json<{ prompt: string }>(r)),
   runs: () => fetch(`${BASE}/api/runs`).then((r) => json<{ active: string | null }>(r)),
   upload: (file: File) => {
     const body = new FormData();

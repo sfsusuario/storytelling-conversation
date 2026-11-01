@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Badge, Field, PlayButton, Select, Toggle } from "../escalera/components/ui";
 import { MOTION_CHOICES, MotionPicker, PhotoPicker, Section, type Upload } from "../escalera/components/Wizard";
 import { api } from "./api";
+import { ScriptPaste } from "./ScriptPaste";
 import { SourcePicker } from "./SourcePicker";
 import type { AppOptions, StoryOptions, SystemStatus } from "./types";
 
@@ -50,9 +51,12 @@ export function StoryForm({
   onStart: () => void;
 }) {
   const [picker, setPicker] = useState(false);
+  const [pasting, setPasting] = useState(false);
+  const pasted = opts.script?.scenes?.length ?? 0;
   const tone = app.tones.find((t) => t.id === opts.tone) ?? app.tones[0];
   const voices = opts.tts_provider === "kokoro" ? app.voices.kokoro : app.voices.edge;
-  const ready = Boolean(free ? opts.own_text.trim() : opts.premise.trim() || opts.source);
+  const hasIdea = Boolean(free ? opts.own_text.trim() : opts.premise.trim() || opts.source);
+  const ready = hasIdea || pasted > 0;
   const ownWords = opts.own_text.trim() ? opts.own_text.trim().split(/\s+/).length : 0;
   const sourceSub = /\/r\/([^/]+)\//.exec(opts.source)?.[1];
   const language = app.languages.find((l) => l.code === opts.language)?.name ?? opts.language;
@@ -84,8 +88,16 @@ export function StoryForm({
           </p>
         </div>
         <div className="flex flex-col gap-5">
-          <Field label={free ? "Tu historia, con tus palabras" : opts.source ? "Historia real (título; puedes añadir indicaciones)" : "¿De qué va el cuento?"}>
-            {(id) => (
+          <Field label={pasted ? "Guion pegado" : free ? "Tu historia, con tus palabras" : opts.source ? "Historia real (título; puedes añadir indicaciones)" : "¿De qué va el cuento?"}>
+            {(id) =>
+              pasted ? (
+                <p id={id} className="inline-flex flex-wrap items-center gap-1 rounded-lg bg-orange-100 px-3 py-2 text-sm text-orange-900 dark:bg-orange-950/50 dark:text-orange-200">
+                  📋 «{opts.script?.title}» · {pasted} escenas{opts.source ? ` · basado en r/${sourceSub}` : ""}. No se usa ningún modelo de texto.
+                  <button type="button" className="ml-1 font-bold" aria-label="Quitar el guion pegado" onClick={() => setOpt("script", {})}>
+                    ✕
+                  </button>
+                </p>
+              ) : (
               <>
                 {free ? (
                   <textarea
@@ -122,6 +134,9 @@ export function StoryForm({
                   >
                     {free ? "💡 Volver a escribir solo la idea" : "✍️ Redacción libre"}
                   </button>
+                  <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setPasting(true)}>
+                    📋 Pegar guion
+                  </button>
                   {free ? (
                     <span className="text-xs text-stone-500">
                       {ownWords} palabras · máximo 2500 · se reparten en {opts.scenes} escenas
@@ -142,8 +157,20 @@ export function StoryForm({
                   )}
                 </div>
               </>
-            )}
+              )
+            }
           </Field>
+          {pasting && (
+            <ScriptPaste
+              ideaOptions={hasIdea ? { ...opts, script: {}, premise: free ? "" : opts.premise, own_text: free ? opts.own_text : "" } : null}
+              hasPhoto={Boolean(upload)}
+              onClose={() => setPasting(false)}
+              onPaste={(script) => {
+                setOpt("script", script);
+                setOpt("scenes", script.scenes.length);
+              }}
+            />
+          )}
           {picker && (
             <SourcePicker
               onClose={() => setPicker(false)}
@@ -187,7 +214,7 @@ export function StoryForm({
           </div>
           <Field label={`Escenas: ${opts.scenes}`} hint="Unos 8-10 segundos por escena">
             {(id) => (
-              <input id={id} type="range" min={4} max={8} value={opts.scenes} onChange={(e) => setOpt("scenes", Number(e.target.value))} className="w-full accent-orange-600" />
+              <input id={id} type="range" min={4} max={8} value={opts.scenes} disabled={pasted > 0} onChange={(e) => setOpt("scenes", Number(e.target.value))} className="w-full accent-orange-600" />
             )}
           </Field>
           <MotionPicker value={opts.motion} onChange={(v) => setOpt("motion", v)} system={system} choices={motionChoices} />
@@ -206,9 +233,9 @@ export function StoryForm({
               hint={opts.preview ? "Se para tras escribir el texto: revisas narración, encuadres y personajes antes de las imágenes y la voz" : "Todo de una vez, sin parar a revisar"}
             />
             <button type="button" className="btn-primary mt-3 w-full py-3 text-base" disabled={!ready} onClick={onStart}>
-              {opts.preview ? "📝 Escribir el guion" : "📖 Crear cuento"}
+              {!opts.preview ? "📖 Crear cuento" : pasted ? "📝 Revisar el guion" : "📝 Escribir el guion"}
             </button>
-            {!ready && <p className="hint text-center">Escribe de qué va el cuento o elige una historia real</p>}
+            {!ready && <p className="hint text-center">Escribe de qué va el cuento, elige una historia real o pega un guion</p>}
           </div>
         </div>
       </div>

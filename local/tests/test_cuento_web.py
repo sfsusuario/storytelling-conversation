@@ -203,3 +203,34 @@ def test_regenerate_keeps_the_own_text():
         "Premise": "Mi texto", "Own_Text": "Mi texto completo.", "Tone": "general", "Genre": "terror",
         "Resolution": "540x960", "Scenes": [{}, {}, {}, {}]}))
     assert regenerate_options("mi-texto", root)["own_text"] == "Mi texto completo."
+
+
+SCRIPT = {"title": "Tula", "protagonist": "a turtle", "caption": "c", "hashtags": ["a"],
+          "scenes": [{"narration": f"Escena {i}.", "action": "the protagonist walks"} for i in range(4)]}
+
+
+def test_pasted_script_needs_no_premise_and_is_validated(client, monkeypatch):
+    seen = []
+    monkeypatch.setattr(pipeline, "run_story",
+                        lambda options, **k: seen.append(options) or fake_story(options, **k))
+    ok = client.post("/api/runs", json={"upload_id": "", "options": {"script": SCRIPT, "scenes": 4}})
+    assert ok.status_code == 200, ok.text
+    sse_events(client.get(f"/api/runs/{ok.json()['run_id']}/events").text)
+    assert seen[0].script == SCRIPT and seen[0].premise == ""
+    post = lambda s, n=4: client.post("/api/runs", json={"upload_id": "", "options": {"script": s, "scenes": n}}).status_code
+    assert post(SCRIPT, 5) == 400                                # not the scenes announced
+    assert post({**SCRIPT, "title": " "}) == 400
+    assert post({**SCRIPT, "protagonist": 3}) == 400
+    assert post({**SCRIPT, "hashtags": "a"}) == 400
+    assert post({**SCRIPT, "scenes": "x"}) == 400
+    assert post({**SCRIPT, "scenes": [{"narration": "x"}] * 4}) == 400   # nothing to draw
+    assert post({**SCRIPT, "scenes": [{"narration": "x" * 2001, "action": "y"}] * 4}) == 400
+
+
+def test_script_prompt_carries_the_rules_and_the_idea(client):
+    post = lambda o, **b: client.post("/api/script-prompt", json={"options": o, **b})
+    got = post({"own_text": "Mi historia entera.", "tone": "general", "genre": "terror", "scenes": 5}).json()["prompt"]
+    assert "Mi historia entera." in got and "keeping their own words" in got
+    assert "JSON shape:" in got and "exactly 5 scenes" in got
+    assert "a real person" in post({"premise": "Una tortuga"}, has_photo=True).json()["prompt"]
+    assert post({"premise": "  "}).status_code == 400

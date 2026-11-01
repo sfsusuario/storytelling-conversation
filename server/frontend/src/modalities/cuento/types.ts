@@ -8,6 +8,7 @@ export interface StoryOptions {
   premise: string;
   source: string; // Reddit post URL the story adapts ("" = invented)
   own_text: string; // the user's own story, narrated in their words ("" = none)
+  script?: Partial<StoryScript>; // a finished script pasted by the user: no text model runs
   preview: boolean; // stop after the text: review the script first
   tone: string;
   genre: string;
@@ -39,6 +40,15 @@ export interface StoryOptions {
   image_prompts?: Record<string, string>;
   /** The user's review of the script, sent with "continue" after a preview. */
   story_edits?: StoryEdits;
+}
+
+export interface StoryScript {
+  title: string;
+  outline: string;
+  protagonist: string;
+  caption: string;
+  hashtags: string[];
+  scenes: (Shot & { narration: string })[];
 }
 
 export interface StoryEdits {

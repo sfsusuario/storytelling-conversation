@@ -341,6 +341,60 @@ def apply_edits(story: Story, social: str, edits: dict, cache_file: Path) -> tup
     return story, social
 
 
+def story_premise(premise: str, own_text: str, source: dict | None) -> str:
+    return own_text[:80] if own_text else premise.strip() or source["title"]
+
+
+# What the user's own LLM must answer with: the same fields story_from_script reads.
+SCRIPT_SHAPE = (
+    '\n\nJSON shape: {"outline": "", "title": "", "protagonist": "", "scenes": [{"index": 1, "narration": "", '
+    '"action": "", "setting": "", "key_object": "", "shot": ""}], "caption": "", "hashtags": [""]}')
+
+
+def script_prompt(premise: str, tone: str, genre: str, count: int, language: str, has_photo: bool,
+                  source: dict | None = None, own_text: str = "") -> str:
+    """The prompt to paste into any LLM by hand: the same rules the local model gets."""
+    system = system_prompt(tone, genre, count, language, has_photo, adapted=source is not None,
+                           own_words=len(own_text.split()))
+    return f"{system}{SCRIPT_SHAPE}\n\n{user_prompt(premise, tone, genre, count, source, own_text)}"
+
+
+def _credits(source: dict) -> str:
+    return f"{CREDITS_SEP}u/{source['author']} en r/{source['subreddit']} · {source['url']}"
+
+
+def story_from_script(script: dict, count: int, cache_dir: Path, source: dict | None = None,
+                      keep: bool = False) -> tuple[Story, str]:
+    """A script the user pasted (validated by config.validate), instead of the
+    model's. Cached like generate_story, so the review's edits survive reruns."""
+    key = hashlib.sha256(json.dumps(["script", script], ensure_ascii=False, sort_keys=True)
+                         .encode("utf-8")).hexdigest()
+    cache_file = cache_dir / "story.json"
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            story = Story.model_validate(cached["story"])
+            if cached.get("key") == key or (keep and len(story.scenes) == count):
+                return story, cached.get("social", "")
+        except (json.JSONDecodeError, KeyError, ValueError):
+            pass
+    text = lambda d, k: d.get(k, "").strip()
+    story = Story(
+        outline=text(script, "outline"), title=text(script, "title"),
+        protagonist=text(script, "protagonist"), caption=text(script, "caption"),
+        hashtags=script.get("hashtags", []),
+        scenes=[StoryScene(index=i + 1, **{k: text(s, k) for k in SCENE_EDITS})
+                for i, s in enumerate(script["scenes"])])
+    social = _format_social(story.caption, story.hashtags, story.title)
+    if source:
+        social += _credits(source)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    cache_file.write_text(json.dumps(
+        {"key": key, "provider": "pasted", "story": story.model_dump(), "social": social},
+        ensure_ascii=False, indent=2), encoding="utf-8")
+    return story, social
+
+
 def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
                    cache_dir: Path, provider: str = "auto", language: str = "es",
                    seed: int | None = None, has_photo: bool = False,
@@ -394,8 +448,7 @@ def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
     story = _pictures(story, provider, model, seed)
     social = _format_social(story.caption, story.hashtags, story.title)
     if source:
-        social += (f"{CREDITS_SEP}u/{source['author']} en r/{source['subreddit']}"
-                   f" · {source['url']}")
+        social += _credits(source)
 
     cache_dir.mkdir(parents=True, exist_ok=True)
     tmp = cache_file.with_suffix(".tmp")

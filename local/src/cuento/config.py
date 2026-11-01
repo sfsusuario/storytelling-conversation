@@ -76,6 +76,8 @@ class StoryOptions:
     premise: str = ""                    # required unless source is set
     source: str = ""                     # Reddit post URL the story adapts (optional)
     own_text: str = ""                   # the user's own story, narrated in their words (optional)
+    # A finished script pasted by the user (story_gen.story_from_script): no text model runs.
+    script: dict = field(default_factory=dict)
     preview: bool = False                # stop after the text: review the script first
     tone: str = "infantil"               # infantil | general
     genre: str = "aventura"              # one of TONES[tone]
@@ -117,6 +119,22 @@ CLIENT_OPTIONS = {f.name for f in dataclasses.fields(StoryOptions)} - {
     "base_image", "output_dir"}
 
 
+def _validate_script(script: dict, count: int) -> None:
+    scenes = script.get("scenes") if isinstance(script, dict) else None
+    if not isinstance(scenes, list) or len(scenes) != count or not all(isinstance(s, dict) for s in scenes):
+        raise ValueError(f"script must have a list of {count} scenes")
+    texts = [script.get(k, "") for k in ("title", "outline", "protagonist", "caption")]
+    texts += [s.get(k, "") for s in scenes
+              for k in ("narration", "action", "setting", "key_object", "shot", "character")]
+    tags = script.get("hashtags", [])
+    if not isinstance(tags, list) or not all(isinstance(v, str) and len(v) <= 2000 for v in texts + tags):
+        raise ValueError("script must be text fields, up to 2000 characters each")
+    if not (script.get("title", "").strip() and script.get("protagonist", "").strip()):
+        raise ValueError("script needs a title and a protagonist")
+    if not all(s.get("narration", "").strip() and s.get("action", "").strip() for s in scenes):
+        raise ValueError("every script scene needs a narration and an action")
+
+
 def validate(options: StoryOptions) -> None:
     """ValueError for anything the form (or a hand-made request) got wrong."""
     from .sources import MAX_WORDS, valid_url  # sources imports this module
@@ -136,7 +154,9 @@ def validate(options: StoryOptions) -> None:
         raise ValueError("own_text and source cannot be used together")
     if len(options.own_text.split()) > MAX_WORDS:
         raise ValueError(f"own_text must be {MAX_WORDS} words at most")
-    if not options.premise.strip() and not options.source and not options.own_text.strip():
+    if options.script:
+        _validate_script(options.script, options.scenes)
+    elif not options.premise.strip() and not options.source and not options.own_text.strip():
         raise ValueError("premise must not be empty")
     if options.tone not in TONES:
         raise ValueError(f"tone must be one of {sorted(TONES)}")

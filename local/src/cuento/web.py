@@ -19,7 +19,8 @@ from studio.runs import active_run as _active_run
 from .config import (CLIENT_OPTIONS, IMAGE_PROVIDERS, OUTPUT_ROOT, STYLE_PRESETS, TONES,
                      StoryOptions, validate)
 from .manifest import regenerate_options
-from .sources import PERIODS, PRESETS, SourceError, list_stories, used_urls
+from .sources import PERIODS, PRESETS, SourceError, fetch_story, list_stories, used_urls
+from .story_gen import script_prompt, story_premise
 
 UPLOADS = OUTPUT_ROOT / "_uploads"
 # served by the studio root: output/ is mounted at /media (Conversación)
@@ -131,6 +132,22 @@ def create_app():
         RUNS[run.id] = run
         run.start()
         return {"run_id": run.id}
+
+    @app.post("/api/script-prompt")
+    async def make_script_prompt(request: Request):
+        """The prompt for writing the script with any LLM, by hand."""
+        body = await request.json()
+        try:
+            o = build_options("", body.get("options") or {})
+            source = fetch_story(o.source) if o.source else None
+        except (TypeError, ValueError) as e:
+            raise HTTPException(400, str(e))
+        except SourceError as e:
+            raise HTTPException(503 if e.retry_in else 400, str(e))
+        own_text = o.own_text.strip()
+        return {"prompt": script_prompt(story_premise(o.premise, own_text, source), o.tone, o.genre,
+                                        int(o.scenes), o.language, bool(body.get("has_photo")),
+                                        source, own_text)}
 
     @app.get("/api/runs")
     def runs():

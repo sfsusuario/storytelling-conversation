@@ -33,7 +33,7 @@ from .images import (credits_card, generate_story_images, placeholder_images,
                      resolve_story_image_provider, silence_wav, story_prompt)
 from .manifest import write_story_manifest
 from .sources import fetch_story
-from .story_gen import apply_edits, generate_story
+from .story_gen import apply_edits, generate_story, story_from_script, story_premise
 
 Progress = Callable[[str], None]
 EventSink = Callable[[dict], None]
@@ -48,9 +48,11 @@ def default_output_dir(options: StoryOptions) -> Path:
         options.scenes, options.language, options.voice, options.voice_rate,
         options.voice_pitch, f"{options.width}x{options.height}@{options.fps}",
         options.fit, options.watermark, options.subtitles, options.test_mode,
-        *([options.own_text] if options.own_text else []))).encode("utf-8"))
+        *([options.own_text] if options.own_text else []),
+        *([json.dumps(options.script, sort_keys=True)] if options.script else []))).encode("utf-8"))
     h.update(Path(options.base_image).read_bytes() if options.base_image else b"nophoto")
-    label = options.premise or options.own_text[:60] or options.source.rstrip("/").rsplit("/", 1)[-1]
+    label = (options.premise or options.own_text[:60] or options.script.get("title")
+             or options.source.rstrip("/").rsplit("/", 1)[-1])
     return OUTPUT_ROOT / f"{_slugify(label)}-{h.hexdigest()[:8]}"
 
 
@@ -136,9 +138,12 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
         return bool(options.force_from) and STAGES.index(name) < STAGES.index(options.force_from)
 
     # 1. the story (invented, or adapted from a real Reddit post)
-    provider, text_model = resolve_text_backend(options.text_provider, options.text_model)
-    options.text_provider, options.text_model = provider, text_model
-    stage("text", f"{provider}: {text_model}")
+    if options.script:  # already written: no text model needed
+        stage("text", "guion pegado")
+    else:
+        provider, text_model = resolve_text_backend(options.text_provider, options.text_model)
+        options.text_provider, options.text_model = provider, text_model
+        stage("text", f"{provider}: {text_model}")
     source = None
     if options.source:
         source_file = output_dir / "01_text" / "source.json"
@@ -149,13 +154,17 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
             source_file.parent.mkdir(parents=True, exist_ok=True)
             source_file.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         log(f"  historia real: u/{source['author']} en r/{source['subreddit']} ({source['words']} palabras)")
-    own_text = options.own_text.strip()
-    premise = own_text[:80] if own_text else options.premise.strip() or source["title"]
-    story, social = generate_story(premise, options.tone, options.genre, count,
-                                   text_model, output_dir / "01_text", provider=provider,
-                                   language=options.language, seed=options.seed,
-                                   has_photo=base_image is not None, keep=kept("text"),
-                                   source=source, own_text=own_text)
+    if options.script:
+        story, social = story_from_script(options.script, count, output_dir / "01_text",
+                                          source, keep=kept("text"))
+    else:
+        own_text = options.own_text.strip()
+        story, social = generate_story(story_premise(options.premise, own_text, source),
+                                       options.tone, options.genre, count,
+                                       text_model, output_dir / "01_text", provider=provider,
+                                       language=options.language, seed=options.seed,
+                                       has_photo=base_image is not None, keep=kept("text"),
+                                       source=source, own_text=own_text)
     if options.story_edits:
         story, social = apply_edits(story, social, options.story_edits, output_dir / "01_text" / "story.json")
     prompts: dict[str, str] = {}
