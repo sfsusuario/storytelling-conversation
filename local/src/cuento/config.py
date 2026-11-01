@@ -75,6 +75,7 @@ def style_fragment(style: str) -> str:
 class StoryOptions:
     premise: str = ""                    # required unless source is set
     source: str = ""                     # Reddit post URL the story adapts (optional)
+    own_text: str = ""                   # the user's own story, narrated in their words (optional)
     preview: bool = False                # stop after the text: review the script first
     tone: str = "infantil"               # infantil | general
     genre: str = "aventura"              # one of TONES[tone]
@@ -118,7 +119,7 @@ CLIENT_OPTIONS = {f.name for f in dataclasses.fields(StoryOptions)} - {
 
 def validate(options: StoryOptions) -> None:
     """ValueError for anything the form (or a hand-made request) got wrong."""
-    from .sources import valid_url  # sources imports this module
+    from .sources import MAX_WORDS, valid_url  # sources imports this module
     if not isinstance(options.image_prompts, dict) or not all(
             isinstance(v, str) and len(v) <= 2000 for v in options.image_prompts.values()):
         raise ValueError("image_prompts must map scene ids to text")
@@ -131,7 +132,11 @@ def validate(options: StoryOptions) -> None:
         raise ValueError("story_edits must be text fields, up to 2000 characters each")
     if options.source and not valid_url(options.source):
         raise ValueError("source must be a reddit.com post URL")
-    if not options.premise.strip() and not options.source:
+    if options.own_text.strip() and options.source:
+        raise ValueError("own_text and source cannot be used together")
+    if len(options.own_text.split()) > MAX_WORDS:
+        raise ValueError(f"own_text must be {MAX_WORDS} words at most")
+    if not options.premise.strip() and not options.source and not options.own_text.strip():
         raise ValueError("premise must not be empty")
     if options.tone not in TONES:
         raise ValueError(f"tone must be one of {sorted(TONES)}")

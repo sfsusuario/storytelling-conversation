@@ -43,7 +43,8 @@ def write_story_manifest(options: StoryOptions, story: Story, timeline: Timeline
     manifest = {
         "Generated_At": datetime.now().isoformat(timespec="seconds"),
         "Title": story.title,
-        "Premise": options.premise,
+        "Premise": options.premise or options.own_text[:80],
+        "Own_Text": options.own_text or None,
         "Tone": options.tone,
         "Genre": options.genre,
         "Style": style,
@@ -88,6 +89,7 @@ def regenerate_options(name: str, root: Path = OUTPUT_ROOT) -> dict:
     photo = folder / base if base else None
     fields = {
         "premise": m["Premise"], "source": m.get("Source") or "",
+        "own_text": m.get("Own_Text") or "",
         "tone": m["Tone"], "genre": m["Genre"],
         "style": m.get("Style", "auto"), "scenes": len(m["Scenes"]),
         "seed": m.get("Seed"), "language": m.get("Language", "es"),

@@ -177,3 +177,29 @@ def test_regenerate_and_delete_history_run(client, monkeypatch):
     assert client.delete("/api/history/nope").status_code == 404
     assert client.delete("/api/history/tortuga-1234").status_code == 200
     assert not run.exists() and (web.OUTPUT_ROOT / "_uploads").exists()
+
+
+def test_own_text_needs_no_premise_and_excludes_a_source(client, monkeypatch):
+    seen = []
+    monkeypatch.setattr(pipeline, "run_story",
+                        lambda options, **k: seen.append(options) or fake_story(options, **k))
+    ok = client.post("/api/runs", json={"upload_id": "", "options": {"own_text": "Mi historia."}})
+    assert ok.status_code == 200, ok.text
+    sse_events(client.get(f"/api/runs/{ok.json()['run_id']}/events").text)
+    assert seen[0].own_text == "Mi historia." and seen[0].premise == ""
+    post = lambda o: client.post("/api/runs", json={"upload_id": "", "options": o}).status_code
+    assert post({"own_text": "x", "source": "https://www.reddit.com/r/a/comments/b/c/"}) == 400
+    assert post({"own_text": "x " * 2501}) == 400
+    assert post({"own_text": "   "}) == 400
+
+
+def test_regenerate_keeps_the_own_text():
+    from cuento.manifest import regenerate_options
+    import tempfile
+    root = Path(tempfile.mkdtemp())
+    (root / "mi-texto").mkdir()
+    (root / "mi-texto" / "final.mp4").write_bytes(b"mp4")
+    (root / "mi-texto" / "pipeline.json").write_text(json.dumps({
+        "Premise": "Mi texto", "Own_Text": "Mi texto completo.", "Tone": "general", "Genre": "terror",
+        "Resolution": "540x960", "Scenes": [{}, {}, {}, {}]}))
+    assert regenerate_options("mi-texto", root)["own_text"] == "Mi texto completo."

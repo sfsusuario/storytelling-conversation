@@ -7,6 +7,7 @@ import type { Shot } from "../escalera/types";
 export interface StoryOptions {
   premise: string;
   source: string; // Reddit post URL the story adapts ("" = invented)
+  own_text: string; // the user's own story, narrated in their words ("" = none)
   preview: boolean; // stop after the text: review the script first
   tone: string;
   genre: string;

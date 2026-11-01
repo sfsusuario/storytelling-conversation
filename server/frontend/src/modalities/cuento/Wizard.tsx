@@ -27,6 +27,8 @@ const TEXT_INFO: Record<string, string> = {
 export function StoryForm({
   app,
   opts,
+  free,
+  setFree,
   setOpt,
   system,
   upload,
@@ -37,6 +39,8 @@ export function StoryForm({
 }: {
   app: AppOptions;
   opts: StoryOptions;
+  free: boolean;
+  setFree: (on: boolean) => void;
   setOpt: SetOpt;
   system: SystemStatus | null;
   upload: Upload | null;
@@ -48,7 +52,8 @@ export function StoryForm({
   const [picker, setPicker] = useState(false);
   const tone = app.tones.find((t) => t.id === opts.tone) ?? app.tones[0];
   const voices = opts.tts_provider === "kokoro" ? app.voices.kokoro : app.voices.edge;
-  const ready = Boolean(opts.premise.trim() || opts.source);
+  const ready = Boolean(free ? opts.own_text.trim() : opts.premise.trim() || opts.source);
+  const ownWords = opts.own_text.trim() ? opts.own_text.trim().split(/\s+/).length : 0;
   const sourceSub = /\/r\/([^/]+)\//.exec(opts.source)?.[1];
   const language = app.languages.find((l) => l.code === opts.language)?.name ?? opts.language;
   // LivePortrait animates a real face: only offered with a photo
@@ -79,23 +84,49 @@ export function StoryForm({
           </p>
         </div>
         <div className="flex flex-col gap-5">
-          <Field label={opts.source ? "Historia real (título; puedes añadir indicaciones)" : "¿De qué va el cuento?"}>
+          <Field label={free ? "Tu historia, con tus palabras" : opts.source ? "Historia real (título; puedes añadir indicaciones)" : "¿De qué va el cuento?"}>
             {(id) => (
               <>
-                <textarea
-                  id={id}
-                  className="input text-lg"
-                  rows={3}
-                  maxLength={300}
-                  placeholder='p. ej. "Una tortuga que quiere volar"'
-                  value={opts.premise}
-                  onChange={(e) => setOpt("premise", e.target.value)}
-                />
+                {free ? (
+                  <textarea
+                    id={id}
+                    className="input"
+                    rows={10}
+                    placeholder="Escribe aquí tu historia. Se narra con tus palabras, repartida en las escenas."
+                    value={opts.own_text}
+                    onChange={(e) => setOpt("own_text", e.target.value)}
+                  />
+                ) : (
+                  <textarea
+                    id={id}
+                    className="input text-lg"
+                    rows={3}
+                    maxLength={300}
+                    placeholder='p. ej. "Una tortuga que quiere volar"'
+                    value={opts.premise}
+                    onChange={(e) => setOpt("premise", e.target.value)}
+                  />
+                )}
                 <div className="mt-2 flex flex-wrap items-center gap-1.5">
                   <button type="button" className="btn-ghost px-2.5 py-1 text-xs" onClick={() => setPicker(true)}>
                     📰 Historia real de Reddit
                   </button>
-                  {opts.source ? (
+                  <button
+                    type="button"
+                    className="btn-ghost px-2.5 py-1 text-xs"
+                    aria-pressed={free}
+                    onClick={() => {
+                      if (!free) setOpt("source", "");
+                      setFree(!free);
+                    }}
+                  >
+                    {free ? "💡 Volver a escribir solo la idea" : "✍️ Redacción libre"}
+                  </button>
+                  {free ? (
+                    <span className="text-xs text-stone-500">
+                      {ownWords} palabras · máximo 2500 · se reparten en {opts.scenes} escenas
+                    </span>
+                  ) : opts.source ? (
                     <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2.5 py-1 text-xs text-orange-900 dark:bg-orange-950/50 dark:text-orange-200">
                       Basado en r/{sourceSub}
                       <button type="button" className="ml-1 font-bold" aria-label="Quitar la historia real" onClick={() => setOpt("source", "")}>
@@ -117,6 +148,7 @@ export function StoryForm({
             <SourcePicker
               onClose={() => setPicker(false)}
               onPick={(s, preset) => {
+                setFree(false);
                 setOpt("source", s.url);
                 setOpt("premise", s.title);
                 if (preset) {

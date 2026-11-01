@@ -32,6 +32,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [system, setSystem] = useState<SystemStatus | null>(null);
   const [opts, setOpts] = useState<StoryOptions | null>(null);
+  const [free, setFreeState] = useState<boolean>(() => store.get("freeWriting", false));
   const [upload, setUpload] = useState<Upload | null>(() => store.get("upload", null));
   const [tab, setTab] = useState<"create" | "history">("create");
   const [run, dispatch] = useReducer(runReducer, initialRun);
@@ -91,12 +92,18 @@ export default function App() {
       return next;
     });
 
+  const setFree = (on: boolean) => {
+    setFreeState(on);
+    store.set("freeWriting", on);
+  };
+
   const start = async (extra: Partial<StoryOptions> = {}) => {
     if (!opts) return;
     const uploadId = upload?.id ?? "";
     setStartError(null);
     try {
-      const sent = { ...opts, premise: opts.premise.trim(), ...extra };
+      // the other mode's text stays in the form as a draft, but is not sent
+      const sent = { ...opts, premise: free ? "" : opts.premise.trim(), own_text: free ? opts.own_text.trim() : "", ...extra };
       const { run_id } = await api.createRun(uploadId, sent);
       store.set("lastRequest", { uploadId, opts: sent });
       attach(run_id);
@@ -277,6 +284,8 @@ export default function App() {
             <StoryForm
               app={app}
               opts={opts}
+              free={free}
+              setFree={setFree}
               setOpt={setOpt}
               system={system}
               upload={upload}

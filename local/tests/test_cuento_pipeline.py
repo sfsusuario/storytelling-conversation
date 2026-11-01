@@ -234,3 +234,26 @@ def test_run_story_test_mode(tmp_path, monkeypatch):
     fields = regenerate_options("tula-1", tmp_path / "output" / "cuento")
     assert fields["scenes"] == 4 and fields["premise"] == "Una tortuga que quiere volar"
     assert "base_image" not in fields and Path(fields["voice"] and out).is_dir()
+
+
+def test_own_text_is_split_in_the_users_words_without_credits(tmp_path, monkeypatch):
+    from cuento import story_gen
+    calls = []
+    monkeypatch.setattr(story_gen, "resolve_text_backend", lambda p, m: ("ollama", "fake"))
+    monkeypatch.setattr(story_gen, "_pictures", lambda story, *a: story)
+    monkeypatch.setattr(story_gen, "_ask",
+                        lambda prov, system, user, model, seed: calls.append((system, user)) or STORY)
+    count = len(STORY.scenes)
+    text = " ".join(["palabra"] * 400)
+    make = lambda own: story_gen.generate_story("x", "infantil", "aventura", count, "fake",
+                                                tmp_path, own_text=own)
+    _, social = make(text)
+    system, user = calls[0]
+    assert text in user and "u/" not in social
+    assert "keeping their own words" in system and "moral in one plain sentence" not in system
+    assert f"{400 // count + 15} words at most" in system
+    # the cache belongs to that text: the same one is reused, another is a new story
+    make(text)
+    assert len(calls) == 1
+    make("otra")
+    assert len(calls) == 2

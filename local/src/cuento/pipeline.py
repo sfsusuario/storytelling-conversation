@@ -47,9 +47,10 @@ def default_output_dir(options: StoryOptions) -> Path:
         options.premise, options.source, options.tone, options.genre, options.style,
         options.scenes, options.language, options.voice, options.voice_rate,
         options.voice_pitch, f"{options.width}x{options.height}@{options.fps}",
-        options.fit, options.watermark, options.subtitles, options.test_mode)).encode("utf-8"))
+        options.fit, options.watermark, options.subtitles, options.test_mode,
+        *([options.own_text] if options.own_text else []))).encode("utf-8"))
     h.update(Path(options.base_image).read_bytes() if options.base_image else b"nophoto")
-    label = options.premise or options.source.rstrip("/").rsplit("/", 1)[-1]
+    label = options.premise or options.own_text[:60] or options.source.rstrip("/").rsplit("/", 1)[-1]
     return OUTPUT_ROOT / f"{_slugify(label)}-{h.hexdigest()[:8]}"
 
 
@@ -148,12 +149,13 @@ def run_story(options: StoryOptions, on_progress: Progress = print,
             source_file.parent.mkdir(parents=True, exist_ok=True)
             source_file.write_text(json.dumps(source, ensure_ascii=False), encoding="utf-8")
         log(f"  historia real: u/{source['author']} en r/{source['subreddit']} ({source['words']} palabras)")
-    premise = options.premise.strip() or source["title"]
+    own_text = options.own_text.strip()
+    premise = own_text[:80] if own_text else options.premise.strip() or source["title"]
     story, social = generate_story(premise, options.tone, options.genre, count,
                                    text_model, output_dir / "01_text", provider=provider,
                                    language=options.language, seed=options.seed,
                                    has_photo=base_image is not None, keep=kept("text"),
-                                   source=source)
+                                   source=source, own_text=own_text)
     if options.story_edits:
         story, social = apply_edits(story, social, options.story_edits, output_dir / "01_text" / "story.json")
     prompts: dict[str, str] = {}

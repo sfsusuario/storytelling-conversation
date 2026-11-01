@@ -135,6 +135,11 @@ ADAPT_RULE = (
     "This is an adaptation of a real story given by the user: keep its events, characters, point of "
     "view and ending; compress it into the scenes, do not invent a different plot and do not add a "
     "moral unless the tone asks for one. Never mention Reddit, the author or that it is a post.")
+OWN_TEXT_RULE = (
+    "The user wrote this story themselves. Split their text across the scenes, in order, keeping their "
+    "own words and sentences in the narrations: shorten only what does not fit, fix nothing else. Do not "
+    "invent events, characters or a moral, and do not change the ending. The tone and genre only set "
+    "the mood of the pictures.")
 PROTAGONIST_RULES = {
     False: ('fill "protagonist" in English with a short noun phrase (8 words at most) that fits inside a '
             'sentence: article + age or species + gender + one distinctive garment or trait, like "a tired '
@@ -146,7 +151,7 @@ PROTAGONIST_RULES = {
 
 
 def system_prompt(tone: str, genre: str, count: int, language: str, has_photo: bool,
-                  adapted: bool = False) -> str:
+                  adapted: bool = False, own_words: int = 0) -> str:
     if tone == "infantil":
         rules, tail, max_words = INFANTIL_RULES, ", and the moral", 30
     else:
@@ -154,6 +159,8 @@ def system_prompt(tone: str, genre: str, count: int, language: str, has_photo: b
         tail = ", and the reveal" if genre == "misterio" else ", and the twist"
     if adapted:
         rules = f"{ADAPT_RULE}\n{rules}"
+    if own_words:  # each scene must have room for its share of the user's text
+        rules, tail, max_words = OWN_TEXT_RULE, "", max(max_words, own_words // count + 15)
     return SYSTEM_TEMPLATE.format(
         count=count, outline_tail=tail, tone_rules=rules, max_words=max_words,
         language=LANGUAGE_NAMES.get(language, language),
@@ -161,7 +168,7 @@ def system_prompt(tone: str, genre: str, count: int, language: str, has_photo: b
 
 
 def user_prompt(premise: str, tone: str, genre: str, count: int,
-                source: dict | None = None) -> str:
+                source: dict | None = None, own_text: str = "") -> str:
     tone_en, genre_en = TONES[tone][1], TONES[tone][2][genre][1]
     prompt = (f'Premise: "{premise.strip()}"\nTone: {tone_en}. Genre: {genre_en}.\n'
               f'Write exactly {count} scenes, "index" 1 to {count}.')
@@ -169,6 +176,8 @@ def user_prompt(premise: str, tone: str, genre: str, count: int,
         text = " ".join(source["text"].split()[:MAX_WORDS])
         prompt += (f'\n\nTitle of the real story: "{source["title"]}"\n'
                    f'Real story to adapt (keep its events and ending):\n"""\n{text}\n"""')
+    if own_text:
+        prompt += f'\n\nThe user\'s text, to split into the scenes:\n"""\n{own_text}\n"""'
     return prompt
 
 
@@ -335,17 +344,22 @@ def apply_edits(story: Story, social: str, edits: dict, cache_file: Path) -> tup
 def generate_story(premise: str, tone: str, genre: str, count: int, model: str,
                    cache_dir: Path, provider: str = "auto", language: str = "es",
                    seed: int | None = None, has_photo: bool = False,
-                   keep: bool = False, source: dict | None = None) -> tuple[Story, str]:
+                   keep: bool = False, source: dict | None = None,
+                   own_text: str = "") -> tuple[Story, str]:
     """Return (story, social text). Cached in cache_dir/story.json.
     keep: reuse the cached story even if made with an older prompt or model.
     source: a real story (sources.fetch_story) the LLM adapts instead of
-    inventing one; the social text then credits it."""
+    inventing one; the social text then credits it.
+    own_text: the user's own story, narrated in their words (no credits)."""
     provider, model = resolve_text_backend(provider, model)
-    system = system_prompt(tone, genre, count, language, has_photo, adapted=source is not None)
-    user = user_prompt(premise, tone, genre, count, source)
+    system = system_prompt(tone, genre, count, language, has_photo, adapted=source is not None,
+                           own_words=len(own_text.split()))
+    user = user_prompt(premise, tone, genre, count, source, own_text)
     key = hashlib.sha256(json.dumps(
         [premise, tone, genre, count, language, has_photo, model, PROMPT_VERSION, system,
-         source and source["url"], source and hashlib.sha256(source["text"].encode()).hexdigest()],
+         source and source["url"], source and hashlib.sha256(source["text"].encode()).hexdigest(),
+         # only when set: stories made before this option keep their cache
+         *([own_text] if own_text else [])],
         ensure_ascii=False).encode("utf-8")).hexdigest()
 
     cache_file = cache_dir / "story.json"

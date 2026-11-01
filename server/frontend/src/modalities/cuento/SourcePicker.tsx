@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Select } from "../escalera/components/ui";
-import { api } from "./api";
+import { api, store } from "./api";
 import type { Preset, SourceList, SourceStory } from "./types";
 
 const PAGE = 8;
@@ -11,8 +11,8 @@ const PERIOD_LABELS: Record<string, string> = { week: "Esta semana", month: "Est
 export function SourcePicker({ onPick, onClose }: { onPick: (story: SourceStory, preset: Preset | null) => void; onClose: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const [presets, setPresets] = useState<Preset[]>([]);
-  const [subreddit, setSubreddit] = useState("shortscarystories");
-  const [custom, setCustom] = useState("");
+  const [subreddit, setSubreddit] = useState(() => store.get("sourceSubreddit", "shortscarystories"));
+  const [custom, setCustom] = useState(() => store.get("sourceCustom", ""));
   const [period, setPeriod] = useState("week");
   const [list, setList] = useState<SourceList | null>(null);
   const [page, setPage] = useState(0);
@@ -31,6 +31,9 @@ export function SourcePicker({ onPick, onClose }: { onPick: (story: SourceStory,
     try {
       setList(await api.stories(sub, period, refresh));
       setPage(0);
+      // remembered only once it loaded, so a mistyped name is not the next default
+      store.set("sourceSubreddit", subreddit);
+      store.set("sourceCustom", custom.trim());
     } catch (e) {
       setError((e as Error).message);
     } finally {
