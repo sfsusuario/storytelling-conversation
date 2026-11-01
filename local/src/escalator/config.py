@@ -514,46 +514,47 @@ STYLE_SETS: dict[str, list[Persona]] = {
                 face="unchanged, exactly as in the photo"),
         Persona(2, "Worn",
                 "Flat and weary: says it like it stopped mattering a while ago.",
-                "clearly exhausted and unwell, like after weeks without sleep: "
-                "noticeably thinner, shoulders slumped, skin pale and greyish, "
-                "clothes wrinkled, stained and unwashed, hair messy and greasy",
+                "the same, with the same clothes, only the posture slumped "
+                "and the hair messy",
                 escalation="despair",
-                face="pale and drawn, heavy dark circles under the eyes, "
-                     "chapped lips, no smile, an empty tired expression"),
+                face="completely exhausted and visibly ill, like after weeks "
+                     "without sleep: very heavy dark puffy bags under the eyes, "
+                     "half-closed drooping eyelids, hollow drawn cheeks, dry "
+                     "cracked lips, mouth hanging slightly open, a blank "
+                     "lifeless thousand-yard stare, sweaty skin"),
         Persona(3, "Haggard",
                 "Bitter and hopeless: nothing will improve and it says so.",
-                "seriously ill and wasting away, like a long terminal "
-                "illness: much thinner and bony, skin grey, dull and blotchy "
-                "on every visible part of the body, clothes stained, loose "
-                "and threadbare, hair thin and falling out",
+                "the same, wearing the same clothes now stained and loose, "
+                "only thinner and bony, hair thin and falling out",
                 escalation="despair",
-                face="gaunt and haggard, grey sallow skin, deeply sunken "
+                face="gaunt and haggard, unhealthy-looking skin of the same complexion, deeply sunken "
                      "cheeks, bloodshot hollow eyes with dark rings, cracked "
                      "lips, a lifeless stare"),
         Persona(4, "Rotting",
                 "Cold nihilism: everything decays, everyone forgets, nothing "
                 "was ever worth it.",
-                "like a corpse a few days dead, with strong horror makeup: "
-                "emaciated, skin grey-green, bruised, blistered and peeling "
-                "wherever it shows, dark veins under it, clothes torn and "
-                "soiled, hair falling out in patches",
+                "the same, wearing the same clothes now torn and soiled, only "
+                "emaciated, the skin of the hands discolored, bruised and "
+                "peeling, hair falling out in patches",
                 escalation="despair",
-                face="decaying skin, blotched, cracked and peeling, deep "
-                     "black hollows around glassy clouded dead eyes, "
-                     "skull-like cheekbones, lips shrunken back, deeply "
-                     "disturbing"),
+                face="still unmistakably the same face, same features, same "
+                     "hair and complexion, like a body dead for a few days: "
+                     "the skin blotched, cracked "
+                     "and peeling, deep black hollows around glassy clouded "
+                     "dead eyes, skull-like sunken cheeks, lips shrunken back "
+                     "from the teeth, deeply disturbing"),
         Persona(5, "Remains",
                 "The last words of something already gone: calm, final, "
                 "chilling.",
-                "like a decomposing corpse that is still standing in the same "
-                "pose, extreme horror prosthetics: skin rotted black, torn "
-                "and sloughing off, bone showing through on the hands and "
-                "body, clothes reduced to filthy rotten rags",
+                "the same, wearing the same clothes now filthy, rotten and "
+                "torn, only the skin of the hands rotted, torn and sloughing "
+                "off with bone showing through",
                 escalation="despair",
-                face="a decomposing corpse face, rotted skin torn open over "
-                     "the bone, sunken clouded dead eyes, teeth bared through "
-                     "missing lips, still recognizably the same person, "
-                     "horrifying"),
+                face="like a decomposing corpse: still unmistakably the same "
+                     "face, same features, same hair and complexion, but the "
+                     "skin rotted, torn open over the cheekbone and jaw, sunken "
+                     "clouded dead eyes, teeth bared through shrunken missing "
+                     "lips, horrifying"),
     ],
     "locura": [
         Persona(1, "Composed",
@@ -564,52 +565,54 @@ STYLE_SETS: dict[str, list[Persona]] = {
         Persona(2, "Twitchy",
                 "Slightly off: talks a bit too fast, laughs at the wrong "
                 "moment, repeats a word, insists everything is under control.",
-                "visibly on edge and sleep-deprived: tense shoulders, hair "
-                "starting to stick out in tufts, collar askew, a few buttons "
-                "undone, clothes slightly rumpled",
+                "the same, with the same clothes, only the hair sticking out "
+                "in tufts and the collar askew",
                 escalation="madness",
-                face="a strained too-wide smile, eyes a little too open and "
-                     "bloodshot, one eyebrow raised, faint dark circles, "
-                     "slightly sweaty skin"),
+                face="clearly unhinged: an exaggerated, unnaturally wide forced "
+                     "grin with all the upper teeth showing, eyes bulging wide "
+                     "open with white visible above the iris, bloodshot, one "
+                     "eyebrow raised high, dark circles, a sweaty forehead"),
         Persona(3, "Unhinged",
                 "Erratic and paranoid: jumps between ideas, hears things, "
                 "suspects the listener, giggles mid-sentence, whispers then "
                 "shouts.",
-                "clearly unstable and unkempt: wild uncombed hair standing "
-                "up, clothes dishevelled, half untucked and stained, a "
-                "scribbled note or ink smudges on the hands",
+                "the same, wearing the same clothes now dishevelled, half "
+                "untucked and stained, only the hair wild and uncombed and "
+                "the hands tense with the fingers spread",
                 escalation="madness",
                 face="a manic grin with teeth showing, wide staring bloodshot "
-                     "eyes that do not blink, one eye slightly larger than "
-                     "the other, twitching brow, sweat on the forehead"),
+                     "eyes showing white all around the iris, tense twitching "
+                     "brow, sweat on the forehead"),
         Persona(4, "Deranged",
                 "Full delusion: talks to someone who is not there, invents a "
                 "grand conspiracy or mission, laughs and sobs in the same "
                 "breath, frightening intensity.",
-                "like a deranged asylum patient, with strong film makeup: "
-                "gaunt, wild matted hair in every direction, clothes torn, "
-                "filthy and hanging off, scratches on the arms and neck, "
-                "fingernails dirty and broken",
+                "the same, wearing the same clothes now torn and filthy, only "
+                "gaunt, the hair matted and greasy, scratches on the hands "
+                "and neck, fingernails dirty and broken",
                 escalation="madness",
-                face="a crazed distorted grin stretched far too wide, bulging "
-                     "bloodshot eyes with tiny pupils staring in slightly "
-                     "different directions, veins standing out on the "
-                     "temples, drool at the corner of the mouth, hair "
-                     "plastered to a sweaty forehead, deeply unsettling"),
+                face="still unmistakably the same face, same features, same "
+                     "hair and complexion, deranged: a crazed, unnaturally "
+                     "wide grin with all the teeth showing, bloodshot eyes "
+                     "opened wide with white visible all around the iris, "
+                     "dilated pupils, veins standing out on the temples and "
+                     "neck, drool at the corner of the mouth, tear tracks, "
+                     "sweat on the forehead, deeply unsettling"),
         Persona(5, "Gone",
                 "Total madness: an eerily calm, singsong voice saying "
                 "something that makes no sense yet feels like a threat, "
                 "one chilling line.",
-                "like a monster of pure insanity in extreme horror makeup: "
-                "emaciated, hair torn out in patches, skin pale and bruised, "
-                "clothes shredded rags, nails cracked and bloody from "
-                "scratching, body rigid and trembling in the same pose",
+                "the same, wearing the same clothes now shredded and filthy, "
+                "only emaciated, hair torn out in patches, self-scratched "
+                "red marks on the hands and neck, nails cracked and bloody",
                 escalation="madness",
-                face="a horrifying inhuman grin splitting the face from ear "
-                     "to ear, eyes huge, black-ringed and completely wild, "
-                     "one pupil blown wide, skin pale with burst capillaries, "
-                     "scratches across the cheeks, still recognizably the "
-                     "same person, terrifying"),
+                face="still unmistakably the same face, same features, same "
+                     "hair and complexion, in the depths of a psychotic "
+                     "breakdown: a terrifying frozen grin stretched as wide "
+                     "as a real face can go, every tooth bared, eyes enormous "
+                     "and completely wild with white all around, pupils blown "
+                     "wide, deep black rings under them, burst capillaries, "
+                     "fresh red scratches across the cheeks"),
     ],
     "arcane": [
         Persona(1, "Curious Apprentice",
@@ -868,19 +871,27 @@ lighting matching the new setting.\
 # The edit comes FIRST: Kontext obeys the opening instruction, and a prompt
 # that opens with "keep everything" returns the photo untouched (tested).
 IMAGE_FACE_PROMPT_TEMPLATE = """\
-Make the person in this photo look {image_detail} (level {level} of 5). Their face: {face}. The change must be obvious and strong at a glance, \
-rendered as realistic film makeup and prosthetics.
+Change this person's facial expression and face: {face}. Then make the rest \
+of them look {image_detail} (level {level} of 5). The change in the face must \
+be strong and obvious at a glance, not subtle.
 
-While doing so, keep from the reference photo: the same person, still \
-recognizable; the exact same pose, head angle, gaze, arms and hands; the \
-same camera angle, crop and framing; the same background and lighting. \
-Photorealistic.\
+Keep this person's exact skin color, complexion, ethnicity and facial \
+features, hair and clothes: the SAME person, still recognizable, in the same \
+outfit. This must remain the SAME REAL \
+PHOTOGRAPH: same photographic style, same color grading and white balance, \
+same film grain, same lighting and shadows, same background untouched. Exact \
+same pose, head size and angle, gaze, arms and hands, same camera angle, \
+crop and framing. No illustration, painting, CGI, airbrushing or desaturation: a \
+candid, unretouched photo.\
 """
 
 KONTEXT_FACE_TEMPLATE = """\
-Make this person look {image_detail}. Their face: {face}. The change must be \
-obvious, like realistic film makeup. Same person, same pose, same hands, \
-same camera angle, same framing, same background.\
+Change this person's facial expression and face: {face}. Make the rest of \
+them look {image_detail}. The face change must be strong, not subtle. Keep \
+their exact skin color, complexion, ethnicity, hair and clothes: the same \
+recognizable person in the same outfit, same pose, same head size, same \
+hands, same camera angle, same framing, same background. A real unretouched photograph: same style, colors, white balance, \
+grain and lighting. Not a painting or illustration.\
 """
 
 

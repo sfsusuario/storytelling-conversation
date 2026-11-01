@@ -140,9 +140,10 @@ def test_face_ladders_change_the_face_and_nothing_else_does():
         for provider in ("gemini", "flux-kontext"):
             prompt = build_image_prompt(ladder[4], provider)
             assert ladder[4].face in prompt and ladder[4].image_detail in prompt
-            assert "same face" not in prompt and "same age" not in prompt
+            assert "same expression" not in prompt and "same age" not in prompt
             # the edit opens the prompt; "keep" clauses come after (Kontext obeys the opening)
-            assert prompt.lower().startswith("make th")
+            assert prompt.lower().startswith("change this person's facial expression")
+            assert "exact skin color" in prompt
             assert "same pose" in prompt.lower() and "framing" in prompt
             assert ladder[4].name not in prompt
     # every other ladder keeps the untouched-face prompts
