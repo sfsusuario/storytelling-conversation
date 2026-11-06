@@ -43,6 +43,21 @@ def test_history_delete():
     assert not run.exists()
 
 
+def test_pasted_script():
+    client = TestClient(create_app())
+    prompt = client.post("/api/video/script-prompt",
+                         json={"topic": "los pulpos tienen tres corazones"}).json()["prompt"]
+    assert "los pulpos tienen tres corazones" in prompt and '"turns"' in prompt
+    assert client.post("/api/video/script-prompt", json={"demo": True}).status_code == 400
+
+    script = json.loads(Path("examples/demo_script.json").read_text(encoding="utf-8"))
+    bad = {**script, "turns": [{**script["turns"][0], "emotion": "nope"}] * 2}
+    assert client.post("/api/video/script", json={"script": bad}).status_code == 422
+    job = client.post("/api/video/script", json={"script": script}).json()["job"]
+    result = [e for e in events(client, job) if e["kind"] == "result"][0]
+    assert result["title"] == script["title"] and len(result["turns"]) == 4
+
+
 def test_demo_flow():
     client = TestClient(create_app())
     d = client.get("/api/defaults").json()

@@ -484,6 +484,30 @@ def _read_cache(cache_file: Path) -> dict | None:
         return None
 
 
+def _starter(source_text: str) -> str:
+    seed = hashlib.sha256(source_text.encode("utf-8")).digest()[0]
+    return "rick" if seed % 2 == 0 else "morty"
+
+
+# What the user's own LLM must answer with: the fields load_script_file reads.
+SCRIPT_SHAPE = (
+    '\n\nResponde solo con un objeto JSON con esta forma: {"title": "", '
+    '"turns": [{"speaker": "rick", "emotion": "", "line": ""}], '
+    '"caption": "", "hashtags": [""]}')
+
+
+def script_prompt(source_text: str, emotions: list[str],
+                  language: str = DEFAULT_LANGUAGE,
+                  min_turns: int = DEFAULT_MIN_TURNS,
+                  max_turns: int = DEFAULT_MAX_TURNS) -> str:
+    """The prompt to paste into any LLM by hand: the same rules the
+    backends get, plus the JSON shape they receive as a schema."""
+    system = build_script_system_prompt(language, emotions, min_turns,
+                                        max_turns, starter=_starter(source_text))
+    return (f"{system}{SCRIPT_SHAPE}\n\n"
+            f"{SCRIPT_USER_TEMPLATE.format(source_text=source_text)}")
+
+
 def generate_script(source_text: str, emotions: list[str], model: str,
                     cache_dir: Path, provider: str = "auto",
                     language: str = DEFAULT_LANGUAGE,
@@ -499,11 +523,9 @@ def generate_script(source_text: str, emotions: list[str], model: str,
     # Who speaks first: derived from the source text so it varies between
     # topics (roughly 50/50) but stays stable for the same topic — a true
     # random pick would invalidate the script cache on every re-run.
-    starter_seed = hashlib.sha256(source_text.encode("utf-8")).digest()[0]
-    starter = "rick" if starter_seed % 2 == 0 else "morty"
     system_prompt = build_script_system_prompt(language, emotions,
                                                min_turns, max_turns,
-                                               starter=starter)
+                                               starter=_starter(source_text))
     schema = build_script_model(emotions)
 
     cache_file = cache_dir / "script.json"

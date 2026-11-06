@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { lastOf, mmss, postJSON, useElapsed, useJob, usePersisted, type Defaults, type Turn } from "./api";
-import { CopyButton, ErrorBox, IdeasModal, LogPanel, Spinner, Stepper } from "./ui";
+import { CopyButton, ErrorBox, IdeasModal, LogPanel, ScriptPasteModal, Spinner, Stepper } from "./ui";
 import { apiUrl, downloadUrl } from "../../remote";
 import ShareButton from "../../ShareButton";
 
@@ -32,6 +32,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
   const [engine, setEngine] = usePersisted(`${KEY}engine`, defaults.tts_engine);
   const [feedback, setFeedback] = useState("");
   const [showIdeas, setShowIdeas] = useState(false);
+  const [pasting, setPasting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // ⚙ Ajustes: everything else keeps the backend defaults
   const [language, setLanguage] = useState(defaults.language);
@@ -65,28 +66,43 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
     watermark,
   });
 
+  const scriptBody = (withFeedback = "", withAuto = false) => ({
+    topic,
+    demo,
+    feedback: withFeedback,
+    auto: withAuto,
+    options: {
+      language,
+      max_turns: maxTurns,
+      text_provider: provider,
+      text_model: model,
+      ...renderOptions(),
+    },
+  });
+
   const writeScript = async (withFeedback = "", withAuto = false) => {
     setError(null);
     setScriptJob(null);
     try {
-      const { job } = await postJSON<{ job: string }>("/m/conversacion/api/video/script", {
-        topic,
-        demo,
-        feedback: withFeedback,
-        auto: withAuto,
-        options: {
-          language,
-          max_turns: maxTurns,
-          text_provider: provider,
-          text_model: model,
-          ...renderOptions(),
-        },
-      });
+      const { job } = await postJSON<{ job: string }>("/m/conversacion/api/video/script", scriptBody(withFeedback, withAuto));
       setScriptJob(job);
       setStep("script");
     } catch (e) {
       setError((e as Error).message);
     }
+  };
+
+  // a pasted script: no LLM; a rejected one throws into the paste box
+  const applyPasted = async (pasted: Record<string, unknown>) => {
+    const { job } = await postJSON<{ job: string }>("/m/conversacion/api/video/script", {
+      ...scriptBody(),
+      demo: false,
+      script: pasted,
+    });
+    setError(null);
+    setPasting(false);
+    setScriptJob(job);
+    setStep("script");
   };
 
   // redoVoice: same script, fresh voices + video (cloned voices vary per take)
@@ -206,6 +222,9 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
           />
           <div className="row">
             <button className="ghost" onClick={() => setShowIdeas(true)}>💡 Ideas</button>
+            <button className="ghost" onClick={() => setPasting(true)} title="Escribe el guion con otro modelo y pégalo">
+              📋 Pegar guion
+            </button>
             <label className="check">
               <input type="checkbox" checked={demo} onChange={(e) => setDemo(e.target.checked)} />
               Guion de ejemplo (sin LLM)
@@ -402,6 +421,13 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
             setDemo(false);
             setShowIdeas(false);
           }}
+        />
+      )}
+      {pasting && (
+        <ScriptPasteModal
+          promptBody={!demo && topic.trim() ? scriptBody() : null}
+          onUse={applyPasted}
+          onClose={() => setPasting(false)}
         />
       )}
     </section>

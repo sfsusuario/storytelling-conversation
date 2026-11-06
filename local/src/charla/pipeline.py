@@ -188,6 +188,31 @@ def _apply_force(output_dir: Path, options: PipelineOptions,
             log(f"  force: cleared {name}")
 
 
+def script_source(options: PipelineOptions, cache_dir: Path,
+                  log: Progress = print) -> str:
+    """What the scriptwriter reads for options.input_text: the scraped
+    article, the bank fact with its details, or the text itself."""
+    source_text = options.input_text
+    if options.is_url:
+        from .scraper import fetch_article
+        log(f"[1/4] script (scraping {options.input_text})")
+        source_text = fetch_article(options.input_text, cache_dir, log=log)
+    else:
+        log(f"[1/4] script (texto: {options.text_provider})")
+        # A headline from the verified fact bank (idea picker, batch, or
+        # typed verbatim) carries supporting details: give them to the
+        # scriptwriter so it explains real facts instead of inventing.
+        from .batch import find_bank_topic
+        bank = find_bank_topic(source_text)
+        if bank and bank.detalles:
+            source_text = bank.prompt
+            log("  script: tema del banco verificado (con sus detalles)")
+    if options.script_feedback.strip():
+        source_text = (f"{source_text}\n\n[Instrucciones adicionales del "
+                       f"usuario para este guion]: {options.script_feedback.strip()}")
+    return source_text
+
+
 def generate_script_stage(options: PipelineOptions,
                           on_progress: Progress = print) -> ScriptDraft:
     """Stage 1 only: dialogue script. Lets a UI show the turns for approval
@@ -235,25 +260,7 @@ def generate_script_stage(options: PipelineOptions,
         log(f"[1/4] script (manual: {options.script_file})")
         script, social = load_script_file(options.script_file, emotions)
     else:
-        source_text = options.input_text
-        if options.is_url:
-            from .scraper import fetch_article
-            log(f"[1/4] script (scraping {options.input_text})")
-            source_text = fetch_article(options.input_text,
-                                        output_dir / "01_script", log=log)
-        else:
-            log(f"[1/4] script (texto: {options.text_provider})")
-            # A headline from the verified fact bank (idea picker, batch, or
-            # typed verbatim) carries supporting details: give them to the
-            # scriptwriter so it explains real facts instead of inventing.
-            from .batch import find_bank_topic
-            bank = find_bank_topic(source_text)
-            if bank and bank.detalles:
-                source_text = bank.prompt
-                log("  script: tema del banco verificado (con sus detalles)")
-        if options.script_feedback.strip():
-            source_text = (f"{source_text}\n\n[Instrucciones adicionales del "
-                           f"usuario para este guion]: {options.script_feedback.strip()}")
+        source_text = script_source(options, output_dir / "01_script", log)
         result = generate_script(
             source_text, emotions, options.text_model,
             output_dir / "01_script", provider=options.text_provider,

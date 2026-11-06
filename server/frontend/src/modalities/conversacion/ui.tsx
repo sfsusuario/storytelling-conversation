@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { getJSON, type Idea, type JobEvent } from "./api";
+import { getJSON, postJSON, type Idea, type JobEvent } from "./api";
 
 export function Stepper({ steps, current }: { steps: string[]; current: number }) {
   return (
@@ -49,6 +49,103 @@ export function Spinner({ label }: { label: string }) {
   return (
     <div className="spinner-row">
       <span className="spinner" /> {label}
+    </div>
+  );
+}
+
+/** The LLM's answer (JSON, with or without a code fence) as an object; the
+ * backend validates turns, speakers and emotions. Throws a Spanish message. */
+export function parsePastedScript(text: string): Record<string, unknown> {
+  const raw = text.trim();
+  if (raw.includes("Responde solo con un objeto JSON")) throw new Error("Esto es el prompt. Pégaselo a tu modelo y aquí pega lo que responda.");
+  const start = raw.indexOf("{");
+  if (start < 0) throw new Error("La respuesta no trae un objeto JSON.");
+  try {
+    return JSON.parse(raw.slice(start, raw.lastIndexOf("}") + 1));
+  } catch (e) {
+    throw new Error(`JSON inválido: ${(e as Error).message}`);
+  }
+}
+
+/** Skip the local model: copy the prompt into any LLM and paste its answer. */
+export function ScriptPasteModal({
+  promptBody,
+  onUse,
+  onClose,
+}: {
+  promptBody: unknown | null; // null: no topic yet, only pasting
+  onUse: (script: Record<string, unknown>) => Promise<void>;
+  onClose: () => void;
+}) {
+  const [prompt, setPrompt] = useState<string | null>(null);
+  const [promptError, setPromptError] = useState<string | null>(null);
+  const [text, setText] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (promptBody)
+      postJSON<{ prompt: string }>("/m/conversacion/api/video/script-prompt", promptBody)
+        .then((r) => setPrompt(r.prompt))
+        .catch((e: Error) => setPromptError(e.message));
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const use = async () => {
+    setError(null);
+    setBusy(true);
+    try {
+      await onUse(parsePastedScript(text));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Pegar guion">
+        <header>
+          <h2>📋 Pegar guion</h2>
+          <button className="ghost" onClick={onClose} aria-label="Cerrar">✕</button>
+        </header>
+        <p className="hint">Escribe el guion con Claude u otro modelo y pégalo aquí. No se usa ningún LLM.</p>
+        <div className="row">
+          {prompt ? (
+            <CopyButton text={prompt} label="📋 Copiar prompt" />
+          ) : promptError ? (
+            <ErrorBox message={`No se pudo preparar el prompt: ${promptError}`} />
+          ) : promptBody ? (
+            <Spinner label="Preparando el prompt…" />
+          ) : (
+            <span className="hint">Para copiar el prompt, cierra y escribe antes el tema. Si ya tienes el guion, pégalo.</span>
+          )}
+        </div>
+        {prompt && (
+          <details className="settings">
+            <summary>Ver el prompt</summary>
+            <textarea className="topic" rows={6} readOnly value={prompt} aria-label="Prompt para el modelo" />
+          </details>
+        )}
+        <textarea
+          className="topic"
+          rows={12}
+          aria-label="Respuesta del modelo"
+          placeholder='{ "title": ..., "turns": [ { "speaker": "rick", "emotion": ..., "line": ... } ], "caption": ..., "hashtags": [...] }'
+          value={text}
+          onChange={(e) => {
+            setText(e.target.value);
+            setError(null);
+          }}
+        />
+        <ErrorBox message={error} />
+        <footer>
+          <button className="ghost" onClick={onClose}>Cancelar</button>
+          <button className="primary" disabled={!text.trim() || busy} onClick={use}>
+            Usar este guion
+          </button>
+        </footer>
+      </div>
     </div>
   );
 }

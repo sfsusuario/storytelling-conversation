@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import dataclasses
+import hashlib
 import json
 import re
 import shutil
@@ -24,7 +25,7 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from .config import (DEFAULT_BATCH_THEME, DEFAULT_BG_VOLUME, DEFAULT_LANGUAGE,
+from .config import (CHARACTERS_DIR, DEFAULT_BATCH_THEME, DEFAULT_BG_VOLUME, DEFAULT_LANGUAGE,
                      DEFAULT_MAX_TURNS, DEFAULT_MIN_TURNS,
                      DEFAULT_OLLAMA_MODEL, DEFAULT_TEXT_MODEL,
                      DEFAULT_TTS_ENGINE, DEFAULT_WATERMARK, LANGUAGE_NAMES,
@@ -150,6 +151,7 @@ class ScriptRequest(BaseModel):
     demo: bool = False
     feedback: str = ""
     auto: bool = False   # Modo automático: approve as soon as the script is written
+    script: dict | None = None   # pasted from any LLM: used as is, no LLM call
     options: dict = Field(default_factory=dict)
 
 
@@ -173,16 +175,42 @@ def _script_options(req: ScriptRequest) -> PipelineOptions:
     unknown = set(req.options) - _SCRIPT_FIELDS - RENDER_FIELDS
     if unknown:
         raise HTTPException(422, "Unknown options: " + ", ".join(sorted(unknown)))
-    if not req.demo and not req.topic.strip():
+    if not req.demo and req.script is None and not req.topic.strip():
         raise HTTPException(400, "Escribe un tema o usa el guion de ejemplo.")
     opts = dict(req.options)
     if "max_turns" in opts:
         opts["max_turns"] = int(opts["max_turns"])
         opts.setdefault("min_turns", min(DEFAULT_MIN_TURNS, opts["max_turns"]))
+    script_file = (DEMO_SCRIPT if req.demo else
+                   _save_pasted(req.script) if req.script is not None else None)
     return PipelineOptions(
-        input_text="" if req.demo else req.topic.strip(),
-        script_file=DEMO_SCRIPT if req.demo else None,
-        script_feedback="" if req.demo else req.feedback.strip(), **opts)
+        input_text="" if script_file else req.topic.strip(),
+        script_file=script_file,
+        script_feedback="" if script_file else req.feedback.strip(), **opts)
+
+
+def _emotions() -> list[str]:
+    from .assets import available_emotions, scan_characters
+    return available_emotions(scan_characters(CHARACTERS_DIR))
+
+
+def _save_pasted(script: dict) -> Path:
+    """A script pasted from any LLM, validated now (so the error shows in
+    the paste box) and saved as a manual script file."""
+    from .pipeline import _slugify
+    from .script_gen import ScriptGenError, _validate_script
+    try:
+        _validate_script(script, _emotions(), min_turns=2)
+    except ScriptGenError as e:
+        raise HTTPException(422, str(e))
+    text = json.dumps(script, ensure_ascii=False, indent=2)
+    digest = hashlib.sha256(text.encode("utf-8")).hexdigest()[:8]
+    # one folder per script: the file name is the run label (output folder)
+    path = (OUTPUT / "_pasted" / digest
+            / f"{_slugify(str(script.get('title') or 'guion'))}.json")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
 
 
 def create_app() -> FastAPI:
@@ -248,6 +276,22 @@ def create_app() -> FastAPI:
         _FLOW.clear()
         _FLOW.update(script_job=job.id, topic=req.topic, demo=req.demo, auto=req.auto)
         return {"job": job.id}
+
+    @app.post("/api/video/script-prompt")
+    def video_script_prompt(req: ScriptRequest):
+        """The prompt for writing the script with any LLM, by hand."""
+        from .pipeline import script_source
+        from .script_gen import script_prompt
+        if req.demo or req.script is not None:
+            raise HTTPException(400, "Escribe un tema para preparar el prompt.")
+        options = _script_options(req)
+        try:
+            source = script_source(options, OUTPUT / "_prompt",
+                                   log=lambda *_: None)
+        except Exception as e:  # a URL that could not be scraped
+            raise HTTPException(400, str(e))
+        return {"prompt": script_prompt(source, _emotions(), options.language,
+                                        options.min_turns, options.max_turns)}
 
     @app.get("/api/video/flow")
     def video_flow():
