@@ -33,6 +33,7 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
   const [feedback, setFeedback] = useState("");
   const [showIdeas, setShowIdeas] = useState(false);
   const [pasting, setPasting] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // ⚙ Ajustes: everything else keeps the backend defaults
   const [language, setLanguage] = useState(defaults.language);
@@ -89,6 +90,24 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
       setStep("script");
     } catch (e) {
       setError((e as Error).message);
+    }
+  };
+
+  const copyPrompt = async () => {
+    setError(null);
+    let prompt: string;
+    try {
+      prompt = (await postJSON<{ prompt: string }>("/m/conversacion/api/video/script-prompt", scriptBody())).prompt;
+    } catch (e) {
+      setError(`No se pudo preparar el prompt: ${(e as Error).message}`);
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(prompt);
+      setPromptCopied(true);
+      setTimeout(() => setPromptCopied(false), 1500);
+    } catch {
+      setPasting(true); // no clipboard here (plain http): the dialog shows the prompt to select by hand
     }
   };
 
@@ -222,6 +241,14 @@ export default function VideoFlow({ defaults, prefill }: { defaults: Defaults; p
           />
           <div className="row">
             <button className="ghost" onClick={() => setShowIdeas(true)}>💡 Ideas</button>
+            <button
+              className="ghost"
+              disabled={demo || !topic.trim()}
+              title={demo || !topic.trim() ? "Escribe antes el tema" : "Copia las reglas del guion junto con el tema, para otro modelo"}
+              onClick={copyPrompt}
+            >
+              {promptCopied ? "✓ Prompt copiado" : "📄 Copiar prompt"}
+            </button>
             <button className="ghost" onClick={() => setPasting(true)} title="Escribe el guion con otro modelo y pégalo">
               📋 Pegar guion
             </button>
